@@ -19,11 +19,19 @@ whether the question was fully answered.
 
 Respond in exactly this format:
 VERDICT: APPROVE or REVISE
-FEEDBACK: <one or two sentences of specific, actionable feedback, or "None" if approved>"""
-
+FEEDBACK: """
 
 def critic_node(state: AgentState) -> dict:
     revision_count = state.get("revision_count", 0)
+
+    # Agar cap hit ho gaya, seedha approve kar do — LLM call mat karo
+    if revision_count >= settings.max_revision_cycles:
+        print(f"[critic] revision cap hit ({revision_count}), auto-approving", flush=True)
+        return {
+            "approved": True,
+            "critic_feedback": "",
+            "revision_count": revision_count + 1,
+        }
 
     print(f"[critic] reviewing draft (revision_count={revision_count})", flush=True)
     result = call_llm(
@@ -37,16 +45,11 @@ def critic_node(state: AgentState) -> dict:
     approved = bool(verdict_match) and verdict_match.group(1).upper() == "APPROVE"
     feedback = feedback_match.group(1).strip() if feedback_match else ""
 
-    # Force approval once we hit the revision cap so the graph always terminates
-    if revision_count >= settings.max_revision_cycles:
-        approved = True
-
     return {
         "approved": approved,
         "critic_feedback": "" if approved else feedback,
         "revision_count": revision_count + 1,
     }
-
 
 def route_after_critic(state: AgentState) -> str:
     """Conditional edge: loop back to research, or finish."""
