@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.1-8b-instant"
 
     # Agent settings
-    max_revision_cycles: int = 0
+    max_revision_cycles: int = 1
     max_subtasks: int = 5
 
     model_config = SettingsConfigDict(
