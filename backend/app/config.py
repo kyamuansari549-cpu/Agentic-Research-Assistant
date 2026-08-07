@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"
     tavily_api_key: str = ""  # optional -- used as fallback if DDG search fails
-    max_revision_cycles: int = 2
+    max_revision_cycles: int = 0
     max_subtasks: int = 5
     # Comma-separated list of allowed frontend origins for CORS.
     # Defaults to local dev; set CORS_ORIGINS on Render to also
