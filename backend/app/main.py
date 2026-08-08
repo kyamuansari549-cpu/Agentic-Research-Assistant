@@ -18,16 +18,30 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sse_starlette.sse import EventSourceResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.schemas import ResearchRequest, ResearchJobResponse
 from app.graph import research_graph
 from app.tools.code_executor import CHARTS_DIR
+from app.config import settings
+from app import db
+from app.auth import (
+    router as auth_router,
+    get_current_user,
+    get_current_user_from_query_or_header,
+)
+
+db.init_db()
 
 app = FastAPI(title="Agentic Research Assistant")
+
+# Required by Authlib to store the OAuth `state` between the /auth/login
+# redirect and Google calling back to /auth/callback.
+app.add_middleware(SessionMiddleware, secret_key=settings.jwt_secret)
 
 # ALLOWED_ORIGINS env var: comma-separated list, e.g.
 # "http://localhost:5173,https://your-frontend.vercel.app"
@@ -46,9 +60,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
+
 # In-memory job store -- fine for a portfolio/demo project.
 # A production version would use Redis so jobs survive a server restart.
-_jobs: dict[str, str] = {}
+# (job_id -> {"query": str, "user_id": str})
+_jobs: dict[str, dict] = {}
 
 NODE_MESSAGES = {
     "planner": "Breaking your question into sub-tasks",
@@ -61,20 +78,23 @@ NODE_MESSAGES = {
 
 
 @app.post("/api/research", response_model=ResearchJobResponse)
-def start_research(req: ResearchRequest):
+def start_research(req: ResearchRequest, user: dict = Depends(get_current_user)):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
     job_id = uuid.uuid4().hex[:12]
-    _jobs[job_id] = req.query
+    _jobs[job_id] = {"query": req.query, "user_id": user["id"]}
     return ResearchJobResponse(job_id=job_id)
 
 
 @app.get("/api/research/{job_id}/stream")
-async def stream_research(job_id: str):
-    if job_id not in _jobs:
+async def stream_research(
+    job_id: str, user: dict = Depends(get_current_user_from_query_or_header)
+):
+    job = _jobs.get(job_id)
+    if not job or job["user_id"] != user["id"]:
         raise HTTPException(status_code=404, detail="Unknown job_id")
 
-    query = _jobs[job_id]
+    query = job["query"]
 
     # Per-node ceiling: if any single node (an LLM call, a search, etc.)
     # stalls past this, we abort with a visible error instead of leaving
@@ -135,13 +155,16 @@ async def stream_research(job_id: str):
                     }
 
                     if node_name == "finalize":
+                        report_text = node_output.get("final_report", "")
+                        db.save_report(
+                            user_id=user["id"],
+                            query=query,
+                            report_markdown=report_text,
+                            chart_path=node_output.get("chart_path"),
+                        )
                         yield {
                             "event": "final_report",
-                            "data": json.dumps(
-                                {
-                                    "report": node_output.get("final_report", ""),
-                                }
-                            ),
+                            "data": json.dumps({"report": report_text}),
                         }
         except asyncio.TimeoutError:
             yield {
@@ -169,6 +192,19 @@ async def stream_research(job_id: str):
             _jobs.pop(job_id, None)
 
     return EventSourceResponse(event_generator())
+
+
+@app.get("/api/reports")
+def get_reports(user: dict = Depends(get_current_user)):
+    return db.list_reports(user["id"])
+
+
+@app.get("/api/reports/{report_id}")
+def get_report(report_id: str, user: dict = Depends(get_current_user)):
+    report = db.get_report(user["id"], report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report
 
 
 @app.get("/api/charts/{filename}")

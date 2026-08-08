@@ -8,11 +8,16 @@ const AGENT_META = {
   system: { label: "SYSTEM", color: "var(--c-system)" },
 };
 
-export default function AgentTimeline({ steps }) {
+export default function AgentTimeline({ steps, isRunning }) {
   if (steps.length === 0) {
     return (
       <div className="timeline empty">
-        <p>The agent team's activity log will appear here once you dispatch a question.</p>
+        <div className="empty-pulse" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <p>Dispatch a question and you'll see the team plan, research, and revise it here — step by step.</p>
       </div>
     );
   }
@@ -22,9 +27,15 @@ export default function AgentTimeline({ steps }) {
       {steps.map((step, i) => {
         const meta = AGENT_META[step.agent] || AGENT_META.system;
         const isRevision = step.message.startsWith("Requested a revision");
+        const isLast = i === steps.length - 1;
         return (
-          <li key={i} className={`timeline-entry ${isRevision ? "revision" : ""}`}>
-            <span className="dot" style={{ background: meta.color }} />
+          <li
+            key={i}
+            className={`timeline-entry ${isRevision ? "revision" : ""} ${
+              isLast && isRunning ? "active" : ""
+            }`}
+          >
+            <span className="dot" style={{ background: meta.color, "--dot-color": meta.color }} />
             <div className="entry-body">
               <div className="entry-head">
                 <span className="agent-label" style={{ color: meta.color }}>
