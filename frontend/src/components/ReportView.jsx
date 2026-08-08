@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { chartUrl } from "../api";
 
 export default function ReportView({ report, chartPath, isRunning, hasStarted }) {
@@ -28,7 +29,7 @@ export default function ReportView({ report, chartPath, isRunning, hasStarted })
         <img className="report-chart" src={chartUrl(chartPath)} alt="Generated data chart" />
       )}
       <div className="markdown-body">
-        <ReactMarkdown>{report}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
       </div>
     </div>
   );

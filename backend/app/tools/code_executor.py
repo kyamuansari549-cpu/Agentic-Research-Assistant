@@ -45,6 +45,10 @@ def run_python_code(code: str) -> Tuple[str, Optional[str]]:
         # hit the same cp1252 encoding error on Windows, from the other side.
         child_env = os.environ.copy()
         child_env["PYTHONIOENCODING"] = "utf-8"
+        # Headless deploy servers (Render, etc.) have no display -- force
+        # matplotlib's non-interactive backend so chart-saving code doesn't
+        # crash trying to open a GUI window that doesn't exist.
+        child_env["MPLBACKEND"] = "Agg"
 
         try:
             result = subprocess.run(

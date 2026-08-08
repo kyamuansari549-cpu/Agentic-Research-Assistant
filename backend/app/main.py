@@ -14,6 +14,7 @@ spinner until everything is done.
 """
 import asyncio
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -25,13 +26,22 @@ from sse_starlette.sse import EventSourceResponse
 from app.schemas import ResearchRequest, ResearchJobResponse
 from app.graph import research_graph
 from app.tools.code_executor import CHARTS_DIR
-from app.config import settings
 
 app = FastAPI(title="Agentic Research Assistant")
 
+# ALLOWED_ORIGINS env var: comma-separated list, e.g.
+# "http://localhost:5173,https://your-frontend.vercel.app"
+# Falls back to localhost only, so local dev keeps working unset.
+_default_origins = "http://localhost:5173"
+allowed_origins = [
+    o.strip()
+    for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -71,7 +81,7 @@ async def stream_research(job_id: str):
     # the SSE connection open with no events and no exception -- that
     # silent-hang state is what previously showed a clean terminal log
     # while the frontend sat on "Waiting for the agent team to finish...".
-    NODE_TIMEOUT_SECONDS = 180
+    NODE_TIMEOUT_SECONDS = 90
 
     async def event_generator():
         initial_state = {"job_id": job_id, "query": query}
