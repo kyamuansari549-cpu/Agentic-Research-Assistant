@@ -7,9 +7,12 @@ LLM to summarize the findings, grounded in the retrieved snippets
 feedback appended -- if a revision cycle was triggered.
 """
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from app.state import AgentState
 from app.tools.llm import call_llm
 from app.tools.web_search import web_search
+from app.config import settings
 
 SYSTEM_PROMPT = """You are a research agent. You are given a sub-question and \
 several raw web search results (title, url, snippet). Write a concise, \
@@ -17,41 +20,65 @@ factual summary (4-6 sentences) that answers the sub-question using ONLY \
 the information in the search results. If the results don't contain a \
 clear answer, say so plainly instead of guessing. Do not fabricate facts."""
 
-# Gap between consecutive DDG searches -- without this, 5 sub-tasks fire
-# 5+ searches back-to-back and DDG's free endpoint starts rate-limiting
-# partway through, silently.
+# Only DDG's free endpoint needs artificial spacing between requests --
+# Tavily (used whenever a key is configured) doesn't have this problem,
+# so we skip the throttle entirely in that case and let every sub-task's
+# search run fully in parallel too, not just the LLM summarization step.
+_search_lock = threading.Lock()
+_last_search_time = [0.0]
 INTER_SEARCH_DELAY_SECONDS = 2
+_NEEDS_THROTTLE = not bool(settings.tavily_api_key)
+
+
+def _throttled_search(query: str, max_results: int = 5):
+    if not _NEEDS_THROTTLE:
+        return web_search(query, max_results=max_results)
+
+    with _search_lock:
+        wait = INTER_SEARCH_DELAY_SECONDS - (time.time() - _last_search_time[0])
+        if wait > 0:
+            time.sleep(wait)
+        results = web_search(query, max_results=max_results)
+        _last_search_time[0] = time.time()
+    return results
+
+
+def _research_one(task: dict, feedback: str) -> dict:
+    print(f"[researcher] starting: {task['description']!r}", flush=True)
+    query = task["description"]
+    if feedback:
+        query = f"{query} (additional angle requested: {feedback})"
+
+    results = _throttled_search(query, max_results=5)
+    snippet_block = "\n".join(
+        f"- {r['title']}: {r['body']} ({r['href']})" for r in results
+    )
+
+    summary = call_llm(
+        SYSTEM_PROMPT,
+        f"Sub-question: {task['description']}\n\nSearch results:\n{snippet_block}",
+    )
+
+    task["findings"] = summary
+    print(f"[researcher] done: {task['description']!r}", flush=True)
+    return {
+        "note": f"### {task['description']}\n{summary}",
+        "sources": [r["href"] for r in results if r["href"]],
+    }
 
 
 def researcher_node(state: AgentState) -> dict:
     subtasks = state["subtasks"]
     feedback = state.get("critic_feedback", "")
 
-    notes: list[str] = []
-    sources: list[str] = []
+    # Run all sub-tasks concurrently. Search calls stay throttled (via the
+    # lock above) but LLM calls overlap, so total wall-clock time is close
+    # to the SLOWEST single sub-task instead of the SUM of all of them.
+    with ThreadPoolExecutor(max_workers=min(5, len(subtasks) or 1)) as pool:
+        results = list(pool.map(lambda t: _research_one(t, feedback), subtasks))
 
-    for i, task in enumerate(subtasks):
-        if i > 0:
-            time.sleep(INTER_SEARCH_DELAY_SECONDS)
-
-        print(f"[researcher] ({i + 1}/{len(subtasks)}) {task['description']!r}", flush=True)
-        query = task["description"]
-        if feedback:
-            query = f"{query} (additional angle requested: {feedback})"
-
-        results = web_search(query, max_results=5)
-        snippet_block = "\n".join(
-            f"- {r['title']}: {r['body']} ({r['href']})" for r in results
-        )
-
-        summary = call_llm(
-            SYSTEM_PROMPT,
-            f"Sub-question: {task['description']}\n\nSearch results:\n{snippet_block}",
-        )
-
-        task["findings"] = summary
-        notes.append(f"### {task['description']}\n{summary}")
-        sources.extend(r["href"] for r in results if r["href"])
+    notes = [r["note"] for r in results]
+    sources = [href for r in results for href in r["sources"]]
 
     return {
         "subtasks": subtasks,
