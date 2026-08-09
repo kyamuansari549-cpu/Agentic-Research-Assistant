@@ -29,6 +29,15 @@ export async function fetchReport(reportId) {
   return res.json();
 }
 
+export async function deleteReport(reportId) {
+  const res = await fetch(`${API_BASE}/api/reports/${reportId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to delete report");
+  return res.json();
+}
+
 export async function startResearch(query) {
   const res = await fetch(`${API_BASE}/api/research`, {
     method: "POST",
@@ -67,9 +76,4 @@ export function streamResearch(jobId, { onStep, onFinal, onError }) {
   };
 
   return () => source.close();
-}
-
-export function chartUrl(path) {
-  const filename = path.split(/[\\/]/).pop();
-  return `${API_BASE}/api/charts/${filename}`;
 }
