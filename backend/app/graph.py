@@ -23,8 +23,20 @@ from app.agents.critic import critic_node, route_after_critic
 
 
 def finalize_node(state: AgentState) -> dict:
-    """Promotes the last approved (or cap-hit) draft to the final report."""
-    return {"final_report": state["draft_report"]}
+    """Promotes the last approved (or cap-hit) draft to the final report.
+
+    Also carries chart_path forward explicitly. main.py's save_report call
+    reads chart_path off THIS node's output dict (not the whole accumulated
+    graph state), so without this line it was always None here -- the
+    chart would show during the live SSE run (the frontend grabs it
+    straight off the coder step's payload) but silently never make it
+    into the database, which is why it always vanished on refresh /
+    when reopened from history, even after the base64 data-URI fix.
+    """
+    return {
+        "final_report": state["draft_report"],
+        "chart_path": state.get("chart_path"),
+    }
 
 
 def build_graph():
