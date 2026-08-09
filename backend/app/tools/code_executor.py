@@ -7,17 +7,25 @@ expected of it. This is a teaching-project level sandbox, not a
 production-grade one -- see README "Security notes" for what a real
 deployment would add (gVisor/firecracker/Docker isolation, no
 filesystem access outside the temp dir, resource limits, etc).
+
+CHART STORAGE: charts are returned as a base64 data URI instead of a
+filesystem path. Render's disk is ephemeral -- anything written to
+/tmp (or anywhere else on the local filesystem) is wiped on every
+restart/redeploy, and Render's free tier also spins the service down
+after ~15 min of inactivity, which counts as a restart. A chart saved
+to disk and referenced by *path* in the database would 404 the next
+time someone opens that report after a restart, even though the
+report text itself is fine (it's stored in Postgres). Embedding the
+image as a data URI makes it part of the same persisted row, so it
+survives restarts exactly like the rest of the report.
 """
+import base64
 import os
 import subprocess
 import sys
 import tempfile
-import uuid
 from pathlib import Path
 from typing import Tuple, Optional
-
-CHARTS_DIR = Path(tempfile.gettempdir()) / "agentic_assistant_charts"
-CHARTS_DIR.mkdir(exist_ok=True)
 
 TIMEOUT_SECONDS = 15
 
@@ -26,10 +34,12 @@ def run_python_code(code: str) -> Tuple[str, Optional[str]]:
     """
     Executes `code` in a fresh subprocess.
     If the code saves a file called chart.png in its working directory,
-    that file is moved to CHARTS_DIR and its path is returned so the
-    frontend can display it alongside the report.
+    it's read back and returned as a base64 data URI (not a filesystem
+    path) so it can be stored directly in the database and displayed
+    with a plain <img src="..."> -- no separate file-serving endpoint,
+    no dependency on the chart still being on disk later.
 
-    Returns: (stdout_or_error_text, chart_path_or_None)
+    Returns: (stdout_or_error_text, chart_data_uri_or_None)
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         script_path = Path(tmpdir) / "snippet.py"
@@ -68,11 +78,11 @@ def run_python_code(code: str) -> Tuple[str, Optional[str]]:
         if result.returncode != 0:
             output += "\n" + result.stderr
 
-        chart_path = None
+        chart_data_uri = None
         generated_chart = Path(tmpdir) / "chart.png"
         if generated_chart.exists():
-            dest = CHARTS_DIR / f"{uuid.uuid4().hex}.png"
-            dest.write_bytes(generated_chart.read_bytes())
-            chart_path = str(dest)
+            png_bytes = generated_chart.read_bytes()
+            b64 = base64.b64encode(png_bytes).decode("ascii")
+            chart_data_uri = f"data:image/png;base64,{b64}"
 
-        return output.strip(), chart_path
+        return output.strip(), chart_data_uri

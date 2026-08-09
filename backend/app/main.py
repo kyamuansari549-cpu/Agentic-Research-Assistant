@@ -20,13 +20,11 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.schemas import ResearchRequest, ResearchJobResponse
 from app.graph import research_graph
-from app.tools.code_executor import CHARTS_DIR
 from app.config import settings
 from app import db
 from app.auth import (
@@ -205,14 +203,6 @@ def get_report(report_id: str, user: dict = Depends(get_current_user)):
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     return report
-
-
-@app.get("/api/charts/{filename}")
-def get_chart(filename: str):
-    path = CHARTS_DIR / filename
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Chart not found")
-    return FileResponse(path)
 
 
 @app.get("/api/health")
