@@ -205,6 +205,14 @@ def get_report(report_id: str, user: dict = Depends(get_current_user)):
     return report
 
 
+@app.delete("/api/reports/{report_id}")
+def delete_report(report_id: str, user: dict = Depends(get_current_user)):
+    deleted = db.delete_report(user["id"], report_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"deleted": True}
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok"}

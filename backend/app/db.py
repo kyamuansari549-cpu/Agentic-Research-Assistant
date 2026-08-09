@@ -122,3 +122,16 @@ def get_report(user_id: str, report_id: str) -> dict | None:
         )
         row = cur.fetchone()
         return dict(row) if row else None
+
+
+def delete_report(user_id: str, report_id: str) -> bool:
+    """Deletes a report, scoped to the requesting user so nobody can
+    delete someone else's report by guessing an id. Returns True if a
+    row was actually deleted, False if no matching report existed."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM reports WHERE id = %s AND user_id = %s",
+            (report_id, user_id),
+        )
+        return cur.rowcount > 0
