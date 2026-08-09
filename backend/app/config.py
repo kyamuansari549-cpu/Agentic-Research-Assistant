@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     groq_api_key: str = ""
-    groq_model: str = "openai/gpt-oss-120b"
+    groq_model: str = "llama-3.1-8b-instant"
     tavily_api_key: str = ""  # optional -- used as fallback if DDG search fails
     max_revision_cycles: int = 1
     max_subtasks: int = 3
