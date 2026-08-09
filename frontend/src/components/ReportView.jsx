@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { chartUrl } from "../api";
 
 function extractText(children) {
   const list = Array.isArray(children) ? children : [children];
@@ -109,7 +108,7 @@ export default function ReportView({ report, chartPath, isRunning, hasStarted })
         </nav>
       )}
       {chartPath && (
-        <img className="report-chart" src={chartUrl(chartPath)} alt="Generated data chart" />
+        <img className="report-chart" src={chartPath} alt="Generated data chart" />
       )}
       <div className="markdown-body">
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
