@@ -6,10 +6,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     groq_api_key: str = ""
-    groq_model: str = "llama-3.1-8b-instant"
+    groq_model: str = "openai/gpt-oss-120b"
     tavily_api_key: str = ""  # optional -- used as fallback if DDG search fails
-    max_revision_cycles: int = 1
-    max_subtasks: int = 3
+    max_revision_cycles: int = 2
+    max_subtasks: int = 5
 
     # --- Auth (Google OAuth + JWT) ---
     google_client_id: str = ""
@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
     frontend_url: str = "http://localhost:5173"  # where we redirect after login
     backend_url: str = "http://localhost:8000"  # our own base URL, for the OAuth redirect_uri
+
+    # --- Database (Supabase Postgres) ---
+    # Falls back to a local SQLite-less Postgres URL only if you run one
+    # yourself; in production this MUST be set to your Supabase connection
+    # string (Render env var), or the app will fail to start.
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/postgres"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
