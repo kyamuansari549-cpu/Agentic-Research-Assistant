@@ -744,6 +744,48 @@ body {
   font-size: 0.75rem;
 }
 
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.history-row .history-item {
+  flex: 1;
+  min-width: 0; /* lets history-query's text-overflow ellipsis work inside a flex child */
+}
+
+.history-delete-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.history-row:hover .history-delete-btn {
+  opacity: 1;
+}
+
+.history-delete-btn:hover:not(:disabled) {
+  border-color: var(--c-critic);
+  color: var(--c-critic);
+  background: rgba(251, 113, 133, 0.08);
+}
+
+.history-delete-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* Scrollbars, for that extra bit of polish */
 .timeline::-webkit-scrollbar,
 .history-list::-webkit-scrollbar {
