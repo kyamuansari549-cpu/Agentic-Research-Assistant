@@ -101,7 +101,7 @@ async def stream_research(
     # the SSE connection open with no events and no exception -- that
     # silent-hang state is what previously showed a clean terminal log
     # while the frontend sat on "Waiting for the agent team to finish...".
-    NODE_TIMEOUT_SECONDS = 90
+    NODE_TIMEOUT_SECONDS = 150
 
     async def event_generator():
         initial_state = {"job_id": job_id, "query": query}
