@@ -1,3 +1,13 @@
+function ThinkingDots() {
+  return (
+    <span className="thinking-dots thinking-dots-inline" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 export default function QueryInput({ query, setQuery, onSubmit, isRunning }) {
   return (
     <form
@@ -17,7 +27,14 @@ export default function QueryInput({ query, setQuery, onSubmit, isRunning }) {
         disabled={isRunning}
       />
       <button type="submit" disabled={isRunning || !query.trim()}>
-        {isRunning ? "Agents are working…" : "Dispatch the agent team"}
+        {isRunning ? (
+          <>
+            Agents are working
+            <ThinkingDots />
+          </>
+        ) : (
+          "Dispatch the agent team"
+        )}
       </button>
     </form>
   );

@@ -8,6 +8,16 @@ const AGENT_META = {
   system: { label: "SYSTEM", color: "var(--c-system)" },
 };
 
+function ThinkingDots() {
+  return (
+    <span className="thinking-dots" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 export default function AgentTimeline({ steps, isRunning }) {
   if (steps.length === 0) {
     return (
@@ -28,11 +38,12 @@ export default function AgentTimeline({ steps, isRunning }) {
         const meta = AGENT_META[step.agent] || AGENT_META.system;
         const isRevision = step.message.startsWith("Requested a revision");
         const isLast = i === steps.length - 1;
+        const isActive = isLast && isRunning;
         return (
           <li
             key={i}
             className={`timeline-entry ${isRevision ? "revision" : ""} ${
-              isLast && isRunning ? "active" : ""
+              isActive ? "active" : ""
             }`}
           >
             <span className="dot" style={{ background: meta.color, "--dot-color": meta.color }} />
@@ -43,7 +54,10 @@ export default function AgentTimeline({ steps, isRunning }) {
                 </span>
                 {isRevision && <span className="loop-badge">↻ loop back to RESEARCHER</span>}
               </div>
-              <p>{step.message}</p>
+              <p>
+                {step.message}
+                {isActive && <ThinkingDots />}
+              </p>
               {step.payload?.chart_path && (
                 <span className="chart-tag">chart.png generated</span>
               )}
