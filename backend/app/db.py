@@ -58,10 +58,18 @@ def init_db():
 
 
 def upsert_user(google_sub: str, email: str, name: str, picture: str) -> dict:
+    """
+    Creates the user on first login, updates their profile fields on
+    every login after that. The returned dict now also carries
+    is_new_user so callers (auth.py) can fire a welcome email exactly
+    once -- on the very first login -- without a separate lookup.
+    """
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM users WHERE google_sub = %s", (google_sub,))
         row = cur.fetchone()
+        is_new_user = row is None
+
         if row:
             cur.execute(
                 "UPDATE users SET email = %s, name = %s, picture = %s WHERE id = %s",
@@ -79,7 +87,9 @@ def upsert_user(google_sub: str, email: str, name: str, picture: str) -> dict:
         # (like get_user_by_id opens) can't see this row until the
         # `with` block above commits.
         cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-        return dict(cur.fetchone())
+        user = dict(cur.fetchone())
+        user["is_new_user"] = is_new_user
+        return user
 
 
 def get_user_by_id(user_id: str) -> dict | None:

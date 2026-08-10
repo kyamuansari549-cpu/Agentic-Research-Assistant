@@ -24,6 +24,7 @@ from jose import JWTError, jwt
 
 from app.config import settings
 from app.db import upsert_user, get_user_by_id
+from app.tools.email import send_welcome_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -105,6 +106,15 @@ async def callback(request: Request):
         name=userinfo.get("name", ""),
         picture=userinfo.get("picture", ""),
     )
+
+    # Fire the welcome email only on a user's very first login ever --
+    # upsert_user tells us this via is_new_user so repeat logins never
+    # re-trigger it. Never let an email hiccup block/break login: any
+    # failure inside send_welcome_email is caught and logged internally,
+    # not raised here.
+    if user.get("is_new_user"):
+        send_welcome_email(to_email=user["email"], name=user["name"])
+
     jwt_token = create_access_token(user["id"])
     return RedirectResponse(f"{settings.frontend_url}/?token={jwt_token}")
 

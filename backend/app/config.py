@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # string (Render env var), or the app will fail to start.
     database_url: str = "postgresql://postgres:postgres@localhost:5432/postgres"
 
+    # --- Email (Resend) ---
+    # Optional -- if unset, the welcome email is silently skipped (see
+    # app/tools/email.py) instead of breaking login.
+    resend_api_key: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
