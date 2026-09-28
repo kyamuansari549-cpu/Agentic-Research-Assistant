@@ -74,35 +74,45 @@ else:
 # ── Public API (same interface regardless of backend) ─────────────────────────
 
 def init_db():
-    with get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                google_sub TEXT UNIQUE NOT NULL,
-                email TEXT NOT NULL,
-                name TEXT,
-                picture TEXT,
-                created_at REAL NOT NULL
+    """
+    Create tables if they don't exist yet.
+    Wrapped in a try/except so a temporarily unreachable DB (e.g. Supabase
+    cold-start, paused project) doesn't crash the whole server on startup.
+    The first real request will surface the error if the DB is still down.
+    """
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    google_sub TEXT UNIQUE NOT NULL,
+                    email TEXT NOT NULL,
+                    name TEXT,
+                    picture TEXT,
+                    created_at REAL NOT NULL
+                )
+                """
             )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS reports (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                query TEXT NOT NULL,
-                report_markdown TEXT,
-                chart_path TEXT,
-                created_at REAL NOT NULL
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reports (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    query TEXT NOT NULL,
+                    report_markdown TEXT,
+                    chart_path TEXT,
+                    created_at REAL NOT NULL
+                )
+                """
             )
-            """
+    except Exception as exc:
+        print(
+            f"[db] WARNING: init_db() failed — DB may be temporarily unreachable. "
+            f"Error: {exc}",
+            flush=True,
         )
-        if USE_POSTGRES:
-            # Postgres needs explicit commit via context manager
-            pass
 
 
 def upsert_user(google_sub: str, email: str, name: str, picture: str) -> dict:
