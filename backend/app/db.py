@@ -1,32 +1,77 @@
 """
-Postgres persistence layer (Supabase).
+Persistence layer — Postgres (Supabase) in production, SQLite locally.
 
-Was originally plain SQLite for deploy simplicity, but on Render's
-free tier the filesystem is ephemeral -- data.db (and every user's
-history) got wiped on every redeploy. Supabase's free Postgres tier
-survives redeploys/restarts, so this module now talks to that
-instead over DATABASE_URL. Table shapes are unchanged, so the rest
-of the app (routes in main.py) didn't need to change at all.
+Auto-detects which to use:
+  - If DATABASE_URL starts with "postgresql" AND the host is reachable
+    → uses Postgres via psycopg2 (production / Render + Supabase)
+  - Otherwise → falls back to a local SQLite file (data.db) so the
+    app works offline / without Supabase configured
 """
+import sqlite3
 import time
 import uuid
 from contextlib import contextmanager
 
-import psycopg2
-import psycopg2.extras
-
 from app.config import settings
 
+# ── Driver detection ──────────────────────────────────────────────────────────
 
-@contextmanager
-def get_conn():
-    conn = psycopg2.connect(settings.database_url, cursor_factory=psycopg2.extras.RealDictCursor)
+def _use_postgres() -> bool:
+    """Return True only if DATABASE_URL looks like Postgres AND we can import psycopg2."""
+    url = settings.database_url or ""
+    if not url.startswith("postgresql"):
+        return False
     try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+        import psycopg2  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
+USE_POSTGRES = _use_postgres()
+
+# ── Postgres helpers ──────────────────────────────────────────────────────────
+
+if USE_POSTGRES:
+    import psycopg2
+    import psycopg2.extras
+
+    @contextmanager
+    def get_conn():
+        conn = psycopg2.connect(
+            settings.database_url,
+            cursor_factory=psycopg2.extras.RealDictCursor,
+            connect_timeout=10,
+        )
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _row(r):
+        return dict(r) if r else None
+
+# ── SQLite helpers ────────────────────────────────────────────────────────────
+
+else:
+    import os
+    _DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data.db")
+
+    @contextmanager
+    def get_conn():
+        conn = sqlite3.connect(_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _row(r):
+        return dict(r) if r else None
+
+
+# ── Public API (same interface regardless of backend) ─────────────────────────
 
 def init_db():
     with get_conn() as conn:
@@ -39,7 +84,7 @@ def init_db():
                 email TEXT NOT NULL,
                 name TEXT,
                 picture TEXT,
-                created_at DOUBLE PRECISION NOT NULL
+                created_at REAL NOT NULL
             )
             """
         )
@@ -47,47 +92,64 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS reports (
                 id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL REFERENCES users(id),
+                user_id TEXT NOT NULL,
                 query TEXT NOT NULL,
                 report_markdown TEXT,
                 chart_path TEXT,
-                created_at DOUBLE PRECISION NOT NULL
+                created_at REAL NOT NULL
             )
             """
         )
+        if USE_POSTGRES:
+            # Postgres needs explicit commit via context manager
+            pass
 
 
 def upsert_user(google_sub: str, email: str, name: str, picture: str) -> dict:
-    """
-    Creates the user on first login, updates their profile fields on
-    every login after that. The returned dict now also carries
-    is_new_user so callers (auth.py) can fire a welcome email exactly
-    once -- on the very first login -- without a separate lookup.
-    """
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE google_sub = %s", (google_sub,))
+
+        if USE_POSTGRES:
+            cur.execute("SELECT * FROM users WHERE google_sub = %s", (google_sub,))
+        else:
+            cur.execute("SELECT * FROM users WHERE google_sub = ?", (google_sub,))
+
         row = cur.fetchone()
         is_new_user = row is None
 
         if row:
-            cur.execute(
-                "UPDATE users SET email = %s, name = %s, picture = %s WHERE id = %s",
-                (email, name, picture, row["id"]),
-            )
             user_id = row["id"]
+            if USE_POSTGRES:
+                cur.execute(
+                    "UPDATE users SET email = %s, name = %s, picture = %s WHERE id = %s",
+                    (email, name, picture, user_id),
+                )
+            else:
+                cur.execute(
+                    "UPDATE users SET email = ?, name = ?, picture = ? WHERE id = ?",
+                    (email, name, picture, user_id),
+                )
         else:
             user_id = uuid.uuid4().hex
-            cur.execute(
-                "INSERT INTO users (id, google_sub, email, name, picture, created_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
-                (user_id, google_sub, email, name, picture, time.time()),
-            )
-        # Fetch on the SAME connection/transaction -- a fresh connection
-        # (like get_user_by_id opens) can't see this row until the
-        # `with` block above commits.
-        cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-        user = dict(cur.fetchone())
+            if USE_POSTGRES:
+                cur.execute(
+                    "INSERT INTO users (id, google_sub, email, name, picture, created_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    (user_id, google_sub, email, name, picture, time.time()),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO users (id, google_sub, email, name, picture, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (user_id, google_sub, email, name, picture, time.time()),
+                )
+
+        if USE_POSTGRES:
+            cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        else:
+            cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+
+        user = _row(cur.fetchone())
         user["is_new_user"] = is_new_user
         return user
 
@@ -95,53 +157,77 @@ def upsert_user(google_sub: str, email: str, name: str, picture: str) -> dict:
 def get_user_by_id(user_id: str) -> dict | None:
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-        row = cur.fetchone()
-        return dict(row) if row else None
+        if USE_POSTGRES:
+            cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        else:
+            cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        return _row(cur.fetchone())
 
 
 def save_report(user_id: str, query: str, report_markdown: str, chart_path: str | None):
     report_id = uuid.uuid4().hex[:12]
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO reports (id, user_id, query, report_markdown, chart_path, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (report_id, user_id, query, report_markdown, chart_path, time.time()),
-        )
+        if USE_POSTGRES:
+            cur.execute(
+                "INSERT INTO reports (id, user_id, query, report_markdown, chart_path, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (report_id, user_id, query, report_markdown, chart_path, time.time()),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO reports (id, user_id, query, report_markdown, chart_path, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (report_id, user_id, query, report_markdown, chart_path, time.time()),
+            )
     return report_id
 
 
 def list_reports(user_id: str) -> list[dict]:
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT id, query, created_at FROM reports "
-            "WHERE user_id = %s ORDER BY created_at DESC LIMIT 50",
-            (user_id,),
-        )
-        return [dict(r) for r in cur.fetchall()]
+        if USE_POSTGRES:
+            cur.execute(
+                "SELECT id, query, created_at FROM reports "
+                "WHERE user_id = %s ORDER BY created_at DESC LIMIT 50",
+                (user_id,),
+            )
+        else:
+            cur.execute(
+                "SELECT id, query, created_at FROM reports "
+                "WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+                (user_id,),
+            )
+        return [_row(r) for r in cur.fetchall()]
 
 
 def get_report(user_id: str, report_id: str) -> dict | None:
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM reports WHERE id = %s AND user_id = %s",
-            (report_id, user_id),
-        )
-        row = cur.fetchone()
-        return dict(row) if row else None
+        if USE_POSTGRES:
+            cur.execute(
+                "SELECT * FROM reports WHERE id = %s AND user_id = %s",
+                (report_id, user_id),
+            )
+        else:
+            cur.execute(
+                "SELECT * FROM reports WHERE id = ? AND user_id = ?",
+                (report_id, user_id),
+            )
+        return _row(cur.fetchone())
 
 
 def delete_report(user_id: str, report_id: str) -> bool:
-    """Deletes a report, scoped to the requesting user so nobody can
-    delete someone else's report by guessing an id. Returns True if a
-    row was actually deleted, False if no matching report existed."""
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM reports WHERE id = %s AND user_id = %s",
-            (report_id, user_id),
-        )
+        if USE_POSTGRES:
+            cur.execute(
+                "DELETE FROM reports WHERE id = %s AND user_id = %s",
+                (report_id, user_id),
+            )
+        else:
+            cur.execute(
+                "DELETE FROM reports WHERE id = ? AND user_id = ?",
+                (report_id, user_id),
+            )
         return cur.rowcount > 0

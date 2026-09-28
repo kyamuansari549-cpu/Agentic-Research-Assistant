@@ -7,10 +7,17 @@ import HistorySidebar from "./components/HistorySidebar.jsx";
 import ToolsPanel from "./components/ToolsPanel.jsx";
 import { startResearch, streamResearch, fetchMe, loginUrl, fetchReport } from "./api";
 
+const NAV_TABS = [
+  { key: "research", label: "Research", icon: "⚡" },
+  { key: "tools",    label: "AI Tools",  icon: "🧰" },
+];
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [backendSlow, setBackendSlow] = useState(false);
+  const [activeNav, setActiveNav] = useState("research");
+
   const [query, setQuery] = useState("");
   const [steps, setSteps] = useState([]);
   const [report, setReport] = useState("");
@@ -23,8 +30,6 @@ export default function App() {
 
   const currentAgent = steps.length ? steps[steps.length - 1].agent : null;
 
-  // On first load: if Google redirected us back with ?token=..., save it.
-  // Either way, then check whether we have a valid session.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
@@ -36,7 +41,6 @@ export default function App() {
       .then(setUser)
       .finally(() => setAuthChecked(true));
 
-    // If backend takes >3s to respond, show a "waking up" hint
     const slowTimer = setTimeout(() => setBackendSlow(true), 3000);
     return () => clearTimeout(slowTimer);
   }, []);
@@ -69,7 +73,7 @@ export default function App() {
           setHistoryRefreshKey((k) => k + 1);
         },
         onError: () => {
-          setError("Lost connection to the agent server. Is the backend running on :8000?");
+          setError("Lost connection to the agent server.");
           setIsRunning(false);
         },
       });
@@ -99,12 +103,16 @@ export default function App() {
 
   if (!authChecked) {
     return (
-      <div className="app-shell app-loading">
-        <span>Loading…</span>
+      <div className="app-loading-screen">
+        <div className="loading-logo">
+          <span className="loading-logo-icon">⚡</span>
+          <span className="loading-logo-text">Research Assistant</span>
+        </div>
+        <div className="loading-bar-wrap">
+          <div className="loading-bar" />
+        </div>
         {backendSlow && (
-          <span className="loading-hint">
-            Backend is waking up (free tier) — this may take ~30s…
-          </span>
+          <p className="loading-hint">Backend waking up — this takes ~30s on free tier…</p>
         )}
       </div>
     );
@@ -112,77 +120,141 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <div className="header-top-row">
-          <p className="eyebrow breadcrumb">
-            <span className="breadcrumb-label">Multi-agent system</span>
-            <span className="breadcrumb-sep">·</span>
-            {STAGES.map((stage, i) => (
-              <span key={stage.key} className="breadcrumb-stage-wrap">
-                <span
-                  className={`breadcrumb-stage ${currentAgent === stage.key ? "active" : ""}`}
-                  style={{ "--stage-color": stage.color }}
-                >
-                  {stage.label}
-                </span>
-                {i < STAGES.length - 1 && <span className="breadcrumb-arrow">→</span>}
-              </span>
-            ))}
-          </p>
+      {/* ── Top navbar ── */}
+      <nav className="topnav">
+        <div className="topnav-brand">
+          <span className="brand-icon">⚡</span>
+          <span className="brand-name">ResearchAI</span>
+          <span className="brand-tag">Multi-Agent</span>
+        </div>
+
+        <div className="topnav-tabs">
+          {NAV_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              className={`topnav-tab ${activeNav === tab.key ? "topnav-tab--active" : ""}`}
+              onClick={() => setActiveNav(tab.key)}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="topnav-auth">
           {user ? (
-            <div className="user-badge">
+            <div className="user-chip">
               {user.picture && (
-                <img
-                  src={user.picture}
-                  alt=""
-                  className="avatar"
-                  referrerPolicy="no-referrer"
-                />
+                <img src={user.picture} alt="" className="user-avatar" referrerPolicy="no-referrer" />
               )}
-              <span>{user.name || user.email}</span>
-              <button className="link-button" onClick={handleLogout}>Sign out</button>
+              <span className="user-name">{user.name || user.email}</span>
+              <button className="signout-btn" onClick={handleLogout}>Sign out</button>
             </div>
           ) : (
-            <a className="login-button" href={loginUrl()}>Sign in with Google</a>
+            <a className="signin-btn" href={loginUrl()}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+              </svg>
+              Sign in with Google
+            </a>
           )}
         </div>
-        <h1>Agentic Research &amp; Report Assistant</h1>
-        <p className="subtitle">
-          Give it a broad question. Five autonomous agents plan, research, run
-          code, write, and critique each other until the report holds up.
-        </p>
-      </header>
+      </nav>
 
-      {error && <div className="error-banner">{error}</div>}
+      {error && (
+        <div className="error-banner" role="alert">
+          <span>⚠</span> {error}
+        </div>
+      )}
 
-      <main className="app-grid">
-        <section className="left-col">
-          <QueryInput
-            query={query}
-            setQuery={setQuery}
-            onSubmit={handleSubmit}
-            isRunning={isRunning}
-          />
-          {(steps.length > 0 || isRunning) && (
-            <div className="pipeline-panel">
-              <AgentPipeline steps={steps} isRunning={isRunning} />
+      {/* ── Main content ── */}
+      <main className="app-main">
+        {activeNav === "research" ? (
+          <div className="research-view">
+            {/* Hero section */}
+            <div className="research-hero">
+              <h1 className="hero-title">
+                Agentic Research &amp; Report Assistant
+              </h1>
+              <p className="hero-sub">
+                Five autonomous agents — Planner, Researcher, Coder, Writer, Critic —
+                collaborate in real time to produce a fully cited research report.
+              </p>
+              {/* Agent pipeline breadcrumb */}
+              <div className="agent-flow">
+                {STAGES.map((stage, i) => (
+                  <span key={stage.key} className="agent-flow-wrap">
+                    <span
+                      className={`agent-flow-step ${currentAgent === stage.key ? "agent-flow-step--active" : ""}`}
+                      style={{ "--stage-color": stage.color }}
+                    >
+                      {stage.label}
+                    </span>
+                    {i < STAGES.length - 1 && (
+                      <span className="agent-flow-arrow">→</span>
+                    )}
+                  </span>
+                ))}
+              </div>
             </div>
-          )}
-          <AgentTimeline steps={steps} isRunning={isRunning} />
-          {user && (
-            <HistorySidebar onSelect={handleSelectHistoryReport} refreshKey={historyRefreshKey} />
-          )}
-          <ToolsPanel />
-        </section>
 
-        <section className="right-col">
-          <ReportView
-            report={report}
-            chartPath={chartPath}
-            isRunning={isRunning}
-            hasStarted={hasStarted}
-          />
-        </section>
+            {/* Main research grid */}
+            <div className="research-grid">
+              {/* Left column */}
+              <div className="research-left">
+                <QueryInput
+                  query={query}
+                  setQuery={setQuery}
+                  onSubmit={handleSubmit}
+                  isRunning={isRunning}
+                />
+
+                {(steps.length > 0 || isRunning) && (
+                  <div className="card pipeline-card">
+                    <AgentPipeline steps={steps} isRunning={isRunning} />
+                  </div>
+                )}
+
+                <div className="card">
+                  <AgentTimeline steps={steps} isRunning={isRunning} />
+                </div>
+
+                {user && (
+                  <div className="card">
+                    <HistorySidebar
+                      onSelect={handleSelectHistoryReport}
+                      refreshKey={historyRefreshKey}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Right column — report */}
+              <div className="research-right">
+                <ReportView
+                  report={report}
+                  chartPath={chartPath}
+                  isRunning={isRunning}
+                  hasStarted={hasStarted}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="tools-view">
+            <div className="tools-hero">
+              <h1 className="hero-title">AI Research Tools</h1>
+              <p className="hero-sub">
+                Six powerful tools for paraphrasing, plagiarism detection, AI content
+                analysis, PDF chat, summarization, and research gap finding.
+              </p>
+            </div>
+            <ToolsPanel />
+          </div>
+        )}
       </main>
     </div>
   );

@@ -64,7 +64,7 @@ app.add_middleware(SessionMiddleware, secret_key=settings.jwt_secret)
 _default_origins = "http://localhost:5173"
 allowed_origins = [
     o.strip()
-    for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",")
+    for o in settings.allowed_origins.split(",")
     if o.strip()
 ]
 
