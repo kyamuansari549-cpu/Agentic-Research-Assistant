@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     # string (Render env var), or the app will fail to start.
     database_url: str = "postgresql://postgres:postgres@localhost:5432/postgres"
 
-    # --- Email (Resend) ---
+    # --- CORS ---
+    # Comma-separated list of allowed frontend origins, e.g.:
+    # "http://localhost:5173,http://localhost:5174,https://your-app.vercel.app"
+    allowed_origins: str = "http://localhost:5173"
     # Optional -- if unset, the welcome email is silently skipped (see
     # app/tools/email.py) instead of breaking login.
     resend_api_key: str = ""
