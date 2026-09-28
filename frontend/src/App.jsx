@@ -10,6 +10,7 @@ import { startResearch, streamResearch, fetchMe, loginUrl, fetchReport } from ".
 export default function App() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [backendSlow, setBackendSlow] = useState(false);
   const [query, setQuery] = useState("");
   const [steps, setSteps] = useState([]);
   const [report, setReport] = useState("");
@@ -34,6 +35,10 @@ export default function App() {
     fetchMe()
       .then(setUser)
       .finally(() => setAuthChecked(true));
+
+    // If backend takes >3s to respond, show a "waking up" hint
+    const slowTimer = setTimeout(() => setBackendSlow(true), 3000);
+    return () => clearTimeout(slowTimer);
   }, []);
 
   function handleLogout() {
@@ -93,7 +98,16 @@ export default function App() {
   }
 
   if (!authChecked) {
-    return <div className="app-shell app-loading">Loading...</div>;
+    return (
+      <div className="app-shell app-loading">
+        <span>Loading…</span>
+        {backendSlow && (
+          <span className="loading-hint">
+            Backend is waking up (free tier) — this may take ~30s…
+          </span>
+        )}
+      </div>
+    );
   }
 
   return (

@@ -10,9 +10,23 @@ export function loginUrl() {
 }
 
 export async function fetchMe() {
-  const res = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders() });
-  if (!res.ok) return null;
-  return res.json();
+  // 8-second timeout so a sleeping Render backend doesn't freeze the app
+  // on the "Loading..." screen forever. If the request times out or fails,
+  // we treat the user as logged out and let them interact normally.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: authHeaders(),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null; // timeout or network error → treat as unauthenticated
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function fetchReports() {

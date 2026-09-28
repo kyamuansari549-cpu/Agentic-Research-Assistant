@@ -1689,3 +1689,20 @@ body {
   color: var(--text);
   line-height: 1.5;
 }
+
+/* ── Loading screen hint ──────────────────────────────────────────────────── */
+.app-loading {
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.loading-hint {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  animation: fadeIn 0.4s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
