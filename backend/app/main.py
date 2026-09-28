@@ -75,6 +75,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Self-ping: keeps Render free-tier from spinning down ──────────────────────
+# Render shuts down a free service after 15 min of inactivity.
+# This background task pings our own /api/health every 10 minutes so the
+# server is always considered active and never goes to sleep.
+
+async def _self_ping_loop():
+    """Ping own health endpoint every 10 min to prevent Render spin-down."""
+    import httpx
+    ping_url = f"{settings.backend_url}/api/health"
+    await asyncio.sleep(30)          # wait for server to finish starting
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.get(ping_url)
+            print("[keep-alive] self-ping OK", flush=True)
+        except Exception as exc:
+            print(f"[keep-alive] self-ping failed: {exc}", flush=True)
+        await asyncio.sleep(10 * 60)  # 10 minutes
+
+
+@app.on_event("startup")
+async def start_keep_alive():
+    """Launch the self-ping loop as a background task on startup."""
+    # Only run on Render (or any non-local environment).
+    # Skip in local dev so we don't spam the terminal.
+    if settings.backend_url.startswith("https://"):
+        asyncio.create_task(_self_ping_loop())
+        print("[keep-alive] background ping started", flush=True)
+
 app.include_router(auth_router)
 
 # In-memory job store -- fine for a portfolio/demo project.
