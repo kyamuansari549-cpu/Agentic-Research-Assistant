@@ -77,3 +77,108 @@ export function streamResearch(jobId, { onStep, onFinal, onError }) {
 
   return () => source.close();
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tools API — Paraphrase, Plagiarism, AI Detect, PDF, Summarize, Gaps
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function paraphraseText(text, style = "academic") {
+  const res = await fetch(`${API_BASE}/api/paraphrase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ text, style }),
+  });
+  if (res.status === 401) throw new Error("UNAUTHENTICATED");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Paraphrase failed");
+  }
+  return res.json();
+}
+
+export async function checkPlagiarism(text) {
+  const res = await fetch(`${API_BASE}/api/plagiarism-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ text }),
+  });
+  if (res.status === 401) throw new Error("UNAUTHENTICATED");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Plagiarism check failed");
+  }
+  return res.json();
+}
+
+export async function detectAIContent(text) {
+  const res = await fetch(`${API_BASE}/api/ai-detect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ text }),
+  });
+  if (res.status === 401) throw new Error("UNAUTHENTICATED");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "AI detection failed");
+  }
+  return res.json();
+}
+
+export async function uploadPDF(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/api/pdf-upload`, {
+    method: "POST",
+    headers: authHeaders(),   // no Content-Type — browser sets multipart boundary
+    body: formData,
+  });
+  if (res.status === 401) throw new Error("UNAUTHENTICATED");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "PDF upload failed");
+  }
+  return res.json();
+}
+
+export async function chatWithPDF(sessionId, question) {
+  const res = await fetch(`${API_BASE}/api/pdf-chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ session_id: sessionId, question }),
+  });
+  if (res.status === 401) throw new Error("UNAUTHENTICATED");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "PDF chat failed");
+  }
+  return res.json();
+}
+
+export async function summarizeText(text, mode = "brief") {
+  const res = await fetch(`${API_BASE}/api/summarize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ text, mode }),
+  });
+  if (res.status === 401) throw new Error("UNAUTHENTICATED");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Summarization failed");
+  }
+  return res.json();
+}
+
+export async function findResearchGaps(text) {
+  const res = await fetch(`${API_BASE}/api/research-gaps`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ text }),
+  });
+  if (res.status === 401) throw new Error("UNAUTHENTICATED");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Research gap analysis failed");
+  }
+  return res.json();
+}

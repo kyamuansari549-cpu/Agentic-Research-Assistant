@@ -4,6 +4,7 @@ import AgentTimeline from "./components/AgentTimeline.jsx";
 import AgentPipeline, { STAGES } from "./components/AgentPipeline.jsx";
 import ReportView from "./components/ReportView.jsx";
 import HistorySidebar from "./components/HistorySidebar.jsx";
+import ToolsPanel from "./components/ToolsPanel.jsx";
 import { startResearch, streamResearch, fetchMe, loginUrl, fetchReport } from "./api";
 
 export default function App() {
@@ -157,6 +158,7 @@ export default function App() {
           {user && (
             <HistorySidebar onSelect={handleSelectHistoryReport} refreshKey={historyRefreshKey} />
           )}
+          <ToolsPanel />
         </section>
 
         <section className="right-col">
