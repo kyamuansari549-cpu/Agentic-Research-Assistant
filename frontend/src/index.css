@@ -232,7 +232,9 @@ textarea, input, select { font-family: var(--font); }
 .sidebar-nav::-webkit-scrollbar { display: none; }
 
 .sidebar-nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   width: 100%;
   text-align: left;
   padding: 0.52rem 0.75rem;
@@ -255,6 +257,19 @@ textarea, input, select { font-family: var(--font); }
   background: var(--bg-3);
   color: var(--text);
   font-weight: 500;
+}
+
+.sidebar-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition: opacity 0.12s;
+}
+.sidebar-nav-item:hover .sidebar-nav-icon,
+.sidebar-nav-item--active .sidebar-nav-icon {
+  opacity: 1;
 }
 
 /* Bottom user / login */

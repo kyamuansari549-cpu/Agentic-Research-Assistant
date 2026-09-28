@@ -8,13 +8,42 @@ import ToolsPanel from "./components/ToolsPanel.jsx";
 import { startResearch, streamResearch, fetchMe, loginUrl, fetchReport } from "./api";
 
 const NAV_ITEMS = [
-  { key: "research", label: "Research" },
-  { key: "paraphrase", label: "Paraphrase" },
-  { key: "plagiarism", label: "Plagiarism Check" },
-  { key: "ai-detect", label: "AI Detection" },
-  { key: "pdf-chat", label: "PDF Chat" },
-  { key: "summarize", label: "Summarize" },
-  { key: "gaps", label: "Research Gaps" },
+  { key: "research",   label: "Research",        icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  )},
+  { key: "paraphrase", label: "Paraphrase",       icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+    </svg>
+  )},
+  { key: "plagiarism", label: "Plagiarism Check",  icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  )},
+  { key: "ai-detect",  label: "AI Detection",     icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h.01M15 9h.01M9 15h6"/>
+    </svg>
+  )},
+  { key: "pdf-chat",   label: "PDF Chat",          icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+    </svg>
+  )},
+  { key: "summarize",  label: "Summarize",         icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+    </svg>
+  )},
+  { key: "gaps",       label: "Research Gaps",     icon: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+  )},
 ];
 
 export default function App() {
@@ -132,6 +161,7 @@ export default function App() {
               className={`sidebar-nav-item ${activePage === item.key ? "sidebar-nav-item--active" : ""}`}
               onClick={() => { setActivePage(item.key); setSidebarOpen(false); }}
             >
+              <span className="sidebar-nav-icon">{item.icon}</span>
               {item.label}
             </button>
           ))}
