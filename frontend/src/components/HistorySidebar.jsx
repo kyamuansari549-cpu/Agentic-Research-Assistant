@@ -4,8 +4,8 @@ import { fetchReports, deleteReport } from "../api";
 function TrashIcon() {
   return (
     <svg
-      width="14"
-      height="14"
+      width="13"
+      height="13"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -23,9 +23,24 @@ function TrashIcon() {
   );
 }
 
-export default function HistorySidebar({ onSelect, refreshKey }) {
+function ChevronDown() {
+  return (
+    <svg className="chev" width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+/**
+ * HistorySidebar — renders as a collapsible "Chats and tasks" section
+ * INSIDE the left sidebar, Claude-style.
+ */
+export default function HistorySidebar({ onSelect, refreshKey, activeId, onNavigate }) {
   const [reports, setReports] = useState([]);
   const [deletingId, setDeletingId] = useState(null);
+  const [open, setOpen] = useState(true);
 
   useEffect(() => {
     fetchReports()
@@ -53,42 +68,49 @@ export default function HistorySidebar({ onSelect, refreshKey }) {
     }
   }
 
-  if (reports.length === 0) {
-    return (
-      <div className="history-sidebar">
-        <h3>Your past reports</h3>
-        <p className="muted">No reports yet -- run a query to see it here.</p>
-      </div>
-    );
+  function handleSelect(id) {
+    onSelect(id);
+    if (onNavigate) onNavigate();
   }
 
   return (
-    <div className="history-sidebar">
-      <h3>Your past reports</h3>
-      <ul className="history-list">
-        {reports.map((r) => (
-          <li key={r.id} className="history-row">
-            <button className="history-item" onClick={() => onSelect(r.id)}>
-              <span className="history-item-main">
-                <span className="history-dot" aria-hidden="true" />
-                <span className="history-query">{r.query}</span>
-              </span>
-              <span className="history-date">
-                {new Date(r.created_at * 1000).toLocaleDateString()}
-              </span>
-            </button>
-            <button
-              className="history-delete-btn"
-              onClick={(e) => handleDelete(e, r.id)}
-              disabled={deletingId === r.id}
-              aria-label={`Delete report: ${r.query}`}
-              title="Delete this report"
-            >
-              <TrashIcon />
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <section className={`history-section ${open ? "" : "history-section--closed"}`}>
+      <button
+        className="history-section-head"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        Chats and tasks
+        <ChevronDown />
+      </button>
+      <div className="history-scroll">
+        {reports.length === 0 ? (
+          <p className="history-empty">No reports yet — run a query to see it here.</p>
+        ) : (
+          <ul className="history-list">
+            {reports.map((r) => (
+              <li key={r.id} className="history-row">
+                <button
+                  className={`history-item ${activeId === r.id ? "history-item--active" : ""}`}
+                  onClick={() => handleSelect(r.id)}
+                  title={r.query}
+                >
+                  <span className="history-query">{r.query}</span>
+                </button>
+                <button
+                  className="history-delete-btn"
+                  onClick={(e) => handleDelete(e, r.id)}
+                  disabled={deletingId === r.id}
+                  aria-label={`Delete report: ${r.query}`}
+                  title="Delete this report"
+                >
+                  <TrashIcon />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }

@@ -53,7 +53,7 @@ export default function ReportView({ report, chartPath, isRunning, hasStarted })
     return (
       <div className="report-panel empty">
         <p className="eyebrow">Final report</p>
-        <p>Ask a research question on the left. The Writer agent's approved
+        <p>Ask a research question above. The Writer agent's approved
           report will render here once the Critic signs off.</p>
       </div>
     );

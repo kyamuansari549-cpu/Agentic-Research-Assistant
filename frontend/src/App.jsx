@@ -1,11 +1,61 @@
 import { useState, useRef, useEffect } from "react";
-import QueryInput from "./components/QueryInput.jsx";
+import Composer from "./components/Composer.jsx";
 import AgentTimeline from "./components/AgentTimeline.jsx";
-import AgentPipeline, { STAGES } from "./components/AgentPipeline.jsx";
+import AgentPipeline from "./components/AgentPipeline.jsx";
 import ReportView from "./components/ReportView.jsx";
 import HistorySidebar from "./components/HistorySidebar.jsx";
 import ToolsPanel from "./components/ToolsPanel.jsx";
 import { startResearch, streamResearch, fetchMe, loginUrl, fetchReport } from "./api";
+
+/* ── Brand starburst mark ─────────────────────────── */
+function BrandMark({ size = 26 }) {
+  const rays = 12;
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
+      {Array.from({ length: rays }).map((_, i) => (
+        <line
+          key={i}
+          x1="20" y1="20" x2="20" y2="7"
+          stroke="#d97757" strokeWidth="3.2" strokeLinecap="round"
+          transform={`rotate(${(i * 360) / rays} 20 20)`}
+        />
+      ))}
+      <circle cx="20" cy="20" r="4.5" fill="#d97757" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function CollapseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <polyline points="14 9 9 12 14 15" />
+    </svg>
+  );
+}
+
+function ExpandIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <polyline points="10 9 15 12 10 15" />
+    </svg>
+  );
+}
 
 const NAV_ITEMS = [
   { key: "research",   label: "Research",        icon: (
@@ -46,12 +96,25 @@ const NAV_ITEMS = [
   )},
 ];
 
+const TOOL_META = {
+  paraphrase: { title: "Paraphrase",        subtitle: "Rewrite text in an academic, casual, or concise style." },
+  plagiarism: { title: "Plagiarism Check",  subtitle: "Scan text for originality and get a risk assessment." },
+  "ai-detect":{ title: "AI Detection",      subtitle: "Estimate how likely a piece of text is AI-generated." },
+  "pdf-chat": { title: "PDF Chat",          subtitle: "Upload a PDF and ask questions about its contents." },
+  summarize:  { title: "Summarize",         subtitle: "Condense long text into clear key points." },
+  gaps:       { title: "Research Gaps",     subtitle: "Surface open questions and future research directions." },
+};
+
+/* Tools shown as quick chips under the hero composer */
+const CHIP_TOOLS = ["paraphrase", "plagiarism", "ai-detect", "pdf-chat", "summarize", "gaps"];
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [backendSlow, setBackendSlow] = useState(false);
   const [activePage, setActivePage] = useState("research");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);       // mobile drawer
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // desktop collapse
 
   const [query, setQuery] = useState("");
   const [steps, setSteps] = useState([]);
@@ -61,8 +124,8 @@ export default function App() {
   const [hasStarted, setHasStarted] = useState(false);
   const [error, setError] = useState(null);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [activeReportId, setActiveReportId] = useState(null);
   const closeStreamRef = useRef(null);
-  const currentAgent = steps.length ? steps[steps.length - 1].agent : null;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -81,9 +144,37 @@ export default function App() {
     setUser(null);
   }
 
+  function stopStream() {
+    if (closeStreamRef.current) {
+      try { closeStreamRef.current(); } catch { /* noop */ }
+      closeStreamRef.current = null;
+    }
+  }
+
+  function handleNewChat() {
+    stopStream();
+    setQuery("");
+    setSteps([]);
+    setReport("");
+    setChartPath(null);
+    setIsRunning(false);
+    setHasStarted(false);
+    setError(null);
+    setActiveReportId(null);
+    setActivePage("research");
+    setSidebarOpen(false);
+  }
+
+  function goToPage(key) {
+    setActivePage(key);
+    setSidebarOpen(false);
+  }
+
   async function handleSubmit() {
+    stopStream();
     setSteps([]); setReport(""); setChartPath(null);
     setError(null); setIsRunning(true); setHasStarted(true);
+    setActiveReportId(null);
     try {
       const jobId = await startResearch(query);
       closeStreamRef.current = streamResearch(jobId, {
@@ -111,7 +202,10 @@ export default function App() {
   }
 
   async function handleSelectHistoryReport(reportId) {
+    stopStream();
     setError(null); setSteps([]); setHasStarted(true);
+    setActiveReportId(reportId);
+    setActivePage("research");
     try {
       const r = await fetchReport(reportId);
       setQuery(r.query); setReport(r.report_markdown); setChartPath(r.chart_path);
@@ -121,6 +215,7 @@ export default function App() {
   if (!authChecked) {
     return (
       <div className="loading-screen">
+        <BrandMark size={40} />
         <div className="loading-logo">Research Assistant</div>
         <div className="loading-bar-wrap"><div className="loading-bar" /></div>
         {backendSlow && <p className="loading-hint">Backend waking up, please wait…</p>}
@@ -128,10 +223,11 @@ export default function App() {
     );
   }
 
-  const isToolPage = activePage !== "research";
+  const firstName = user?.name ? user.name.split(" ")[0] : null;
+  const greeting = firstName ? `What's cooking, ${firstName}?` : "What's cooking?";
 
   return (
-    <div className="shell">
+    <div className={`shell ${sidebarCollapsed ? "shell--collapsed" : ""}`}>
       {/* ── Mobile header ── */}
       <header className="mobile-header">
         <button className="mobile-menu-btn" onClick={() => setSidebarOpen(v => !v)} aria-label="Menu">
@@ -147,19 +243,32 @@ export default function App() {
 
       {/* ── Left sidebar ── */}
       <aside className={`sidebar ${sidebarOpen ? "sidebar--open" : ""}`}>
-        {/* Logo */}
-        <div className="sidebar-logo">
-          <span className="sidebar-logo-mark">R</span>
-          <span className="sidebar-logo-text">Research Assistant</span>
+        <div className="sidebar-top">
+          <button className="brand" onClick={handleNewChat} title="New chat">
+            <BrandMark size={26} />
+            <span className="brand-text">Research Assistant</span>
+          </button>
+          <button
+            className="icon-btn collapse-btn"
+            onClick={() => setSidebarCollapsed(true)}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <CollapseIcon />
+          </button>
         </div>
 
-        {/* Nav items */}
+        <button className="new-chat-btn" onClick={handleNewChat}>
+          <PlusIcon />
+          New chat
+        </button>
+
         <nav className="sidebar-nav">
           {NAV_ITEMS.map((item) => (
             <button
               key={item.key}
               className={`sidebar-nav-item ${activePage === item.key ? "sidebar-nav-item--active" : ""}`}
-              onClick={() => { setActivePage(item.key); setSidebarOpen(false); }}
+              onClick={() => goToPage(item.key)}
             >
               <span className="sidebar-nav-icon">{item.icon}</span>
               {item.label}
@@ -167,7 +276,14 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Bottom: user / login */}
+        {/* History lives INSIDE the sidebar */}
+        <HistorySidebar
+          onSelect={handleSelectHistoryReport}
+          refreshKey={historyRefreshKey}
+          activeId={activeReportId}
+          onNavigate={() => setSidebarOpen(false)}
+        />
+
         <div className="sidebar-bottom">
           {user ? (
             <div className="sidebar-user">
@@ -190,54 +306,83 @@ export default function App() {
 
       {/* ── Main content ── */}
       <div className="main-content">
+        <button
+          className="reopen-btn"
+          onClick={() => setSidebarCollapsed(false)}
+          aria-label="Open sidebar"
+          title="Open sidebar"
+        >
+          <ExpandIcon />
+        </button>
+
         {error && <div className="error-bar" role="alert">{error}</div>}
 
         {activePage === "research" ? (
-          <div className="research-page">
-            {/* Hero */}
-            <div className="page-header">
-              <h1 className="page-title">Agentic Research Assistant</h1>
-              <p className="page-subtitle">
-                Five autonomous agents plan, research, run code, write, and critique until the report holds up.
-              </p>
-              <div className="agent-flow">
-                {STAGES.map((s, i) => (
-                  <span key={s.key} className="agent-flow-wrap">
-                    <span
-                      className={`agent-flow-step ${currentAgent === s.key ? "agent-flow-step--active" : ""}`}
-                      style={{ "--sc": s.color }}
-                    >{s.label}</span>
-                    {i < STAGES.length - 1 && <span className="agent-flow-sep">›</span>}
-                  </span>
-                ))}
-              </div>
-            </div>
+          hasStarted ? (
+            /* ── Active conversation ── */
+            <div className="convo">
+              <div className="convo-query-card">{query}</div>
 
-            {/* Grid */}
-            <div className="research-grid">
-              <div className="research-left">
-                <QueryInput query={query} setQuery={setQuery} onSubmit={handleSubmit} isRunning={isRunning} />
-                {(steps.length > 0 || isRunning) && (
-                  <div className="panel">
-                    <AgentPipeline steps={steps} isRunning={isRunning} />
-                  </div>
-                )}
-                <div className="panel">
-                  <AgentTimeline steps={steps} isRunning={isRunning} />
+              {(steps.length > 0 || isRunning) && (
+                <div className="convo-block">
+                  <span className="eyebrow">Agent pipeline</span>
+                  <AgentPipeline steps={steps} isRunning={isRunning} />
                 </div>
-                {user && (
-                  <div className="panel">
-                    <HistorySidebar onSelect={handleSelectHistoryReport} refreshKey={historyRefreshKey} />
-                  </div>
-                )}
+              )}
+
+              <div className="convo-block">
+                <span className="eyebrow">Agent activity</span>
+                <AgentTimeline steps={steps} isRunning={isRunning} />
               </div>
-              <div className="research-right">
+
+              <div className="convo-block">
+                <span className="eyebrow">Final report</span>
                 <ReportView report={report} chartPath={chartPath} isRunning={isRunning} hasStarted={hasStarted} />
               </div>
+
+              <div className="convo-composer">
+                <Composer
+                  query={query}
+                  setQuery={setQuery}
+                  onSubmit={handleSubmit}
+                  isRunning={isRunning}
+                  placeholder="Ask a follow-up question…"
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            /* ── Idle hero, Claude-style ── */
+            <div className="hero">
+              <div className="hero-mark"><BrandMark size={46} /></div>
+              <h1 className="hero-greeting">{greeting}</h1>
+              <Composer
+                query={query}
+                setQuery={setQuery}
+                onSubmit={handleSubmit}
+                isRunning={isRunning}
+                autoFocus
+                placeholder="Ask a research question…"
+              />
+              <div className="chip-row">
+                {CHIP_TOOLS.map((key) => {
+                  const item = NAV_ITEMS.find((n) => n.key === key);
+                  return (
+                    <button key={key} className="chip" onClick={() => goToPage(key)}>
+                      {item.icon}
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )
         ) : (
+          /* ── Tool page ── */
           <div className="tool-page">
+            <div className="tool-page-head">
+              <h1 className="tool-page-title">{TOOL_META[activePage].title}</h1>
+              <p className="tool-page-subtitle">{TOOL_META[activePage].subtitle}</p>
+            </div>
             <ToolsPanel activeTool={activePage} setActiveTool={setActivePage} />
           </div>
         )}
