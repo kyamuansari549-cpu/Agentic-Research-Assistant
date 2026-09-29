@@ -12,9 +12,9 @@
   --text:        #ece8df;
   --text-2:      #b3ada1;
   --text-3:      #7d776c;
-  --accent:      #d97757;
-  --accent-hover:#c96644;
-  --accent-dim:  rgba(217,119,87,0.12);
+  --accent:      #5bb5a5;
+  --accent-hover:#48a08f;
+  --accent-dim:  rgba(91,181,165,0.12);
   --link:        #8fb3e8;
   --danger:      #e0685c;
   --success:     #6fbf8f;
@@ -54,7 +54,7 @@ body {
 button { cursor: pointer; font-family: var(--font); }
 a { color: var(--link); text-decoration: none; }
 textarea, input, select { font-family: var(--font); }
-::selection { background: rgba(217,119,87,0.28); }
+::selection { background: rgba(91,181,165,0.30); }
 
 /* ═══════════════════════════════════════════════════
    LOADING SCREEN
@@ -1322,7 +1322,7 @@ textarea, input, select { font-family: var(--font); }
 .chat-msg--user {
   align-self: flex-end;
   background: var(--accent-dim);
-  border: 1px solid rgba(217,119,87,0.25);
+  border: 1px solid rgba(91,181,165,0.25);
   color: var(--text);
   border-bottom-right-radius: 3px;
 }

@@ -12,7 +12,7 @@ function BrandMark({ size = 26 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
       <rect x="1.5" y="1.5" width="37" height="37" rx="10.5" fill="#211a15" stroke="#3a2e26" strokeWidth="1.5" />
-      <g stroke="#d97757" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round">
+      <g stroke="#5bb5a5" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round">
         <line x1="14.5" y1="10.5" x2="14.5" y2="29.5" />
         <path d="M14.5 10.5 H22.8 A6 6 0 0 1 22.8 22.5 H14.5" />
         <line x1="19.5" y1="22.5" x2="27" y2="29.5" />
