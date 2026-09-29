@@ -1,3 +1,6 @@
+import { motion } from "framer-motion";
+import { EASE } from "./motion.jsx";
+
 const AGENT_META = {
   planner: { label: "PLANNER", color: "var(--c-planner)" },
   researcher: { label: "RESEARCHER", color: "var(--c-researcher)" },
@@ -40,11 +43,14 @@ export default function AgentTimeline({ steps, isRunning }) {
         const isLast = i === steps.length - 1;
         const isActive = isLast && isRunning;
         return (
-          <li
+          <motion.li
             key={i}
             className={`timeline-entry ${isRevision ? "revision" : ""} ${
               isActive ? "active" : ""
             }`}
+            initial={{ opacity: 0, x: -14 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.22, ease: EASE }}
           >
             <span className="dot" style={{ background: meta.color, "--dot-color": meta.color }} />
             <div className="entry-body">
@@ -62,7 +68,7 @@ export default function AgentTimeline({ steps, isRunning }) {
                 <span className="chart-tag">chart.png generated</span>
               )}
             </div>
-          </li>
+          </motion.li>
         );
       })}
     </ol>

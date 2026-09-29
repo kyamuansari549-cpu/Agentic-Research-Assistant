@@ -1,4 +1,6 @@
 import { useRef, useEffect } from "react";
+import { motion } from "framer-motion";
+import { EASE } from "./motion.jsx";
 
 function LaunchIcon() {
   return (
@@ -74,15 +76,18 @@ export default function Composer({
             5 agents
           </span>
         </div>
-        <button
-          type="submit"
-          className="send-btn"
-          disabled={isRunning || !query.trim()}
-          aria-label={isRunning ? "Agents are working" : "Send question"}
-          title={isRunning ? "Agents are working" : "Send question"}
-        >
-          {isRunning ? <Spinner /> : <LaunchIcon />}
-        </button>
+        <motion.button
+        type="submit"
+        className="send-btn"
+        disabled={isRunning || !query.trim()}
+        aria-label={isRunning ? "Agents are working" : "Send question"}
+        title={isRunning ? "Agents are working" : "Send question"}
+        whileHover={!isRunning && query.trim() ? { scale: 1.07 } : {}}
+        whileTap={!isRunning && query.trim() ? { scale: 0.92 } : {}}
+        transition={{ duration: 0.16, ease: EASE }}
+      >
+        {isRunning ? <Spinner /> : <LaunchIcon />}
+      </motion.button>
       </div>
     </form>
   );

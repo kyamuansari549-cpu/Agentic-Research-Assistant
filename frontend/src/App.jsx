@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
+import { EASE, DUR, staggerParent, riseChild, viewMotion, Rise } from "./components/motion.jsx";
 import Composer from "./components/Composer.jsx";
 import AgentTimeline from "./components/AgentTimeline.jsx";
 import AgentPipeline from "./components/AgentPipeline.jsx";
@@ -49,6 +51,33 @@ function ExpandIcon() {
       aria-hidden="true">
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <polyline points="10 9 15 12 10 15" />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <line x1="12" y1="2" x2="12" y2="5" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+      <line x1="2" y1="12" x2="5" y2="12" />
+      <line x1="19" y1="12" x2="22" y2="12" />
+      <line x1="4.9" y1="4.9" x2="7" y2="7" />
+      <line x1="17" y1="17" x2="19.1" y2="19.1" />
+      <line x1="4.9" y1="19.1" x2="7" y2="17" />
+      <line x1="17" y1="7" x2="19.1" y2="4.9" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
     </svg>
   );
 }
@@ -121,7 +150,18 @@ export default function App() {
   const [error, setError] = useState(null);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [activeReportId, setActiveReportId] = useState(null);
+  const [theme, setTheme] = useState(() => localStorage.getItem("ra-theme") || "dark");
   const closeStreamRef = useRef(null);
+
+  /* Dark / light theme: attribute on <html> + a short cross-fade window */
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    localStorage.setItem("ra-theme", theme);
+    root.classList.add("theming");
+    const t = setTimeout(() => root.classList.remove("theming"), 340);
+    return () => clearTimeout(t);
+  }, [theme]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -220,8 +260,11 @@ export default function App() {
   }
 
   const firstName = user?.name ? user.name.split(" ")[0] : null;
+  const isLight = theme === "light";
+  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className={`shell ${sidebarCollapsed ? "shell--collapsed" : ""}`}>
       {/* ── Mobile header ── */}
       <header className="mobile-header">
@@ -229,6 +272,15 @@ export default function App() {
           <span /><span /><span />
         </button>
         <span className="mobile-logo">Research Assistant</span>
+        <button
+          className="theme-icon-btn"
+          onClick={toggleTheme}
+          aria-label={isLight ? "Switch to dark theme" : "Switch to light theme"}
+          aria-pressed={isLight}
+          title={isLight ? "Switch to dark theme" : "Switch to light theme"}
+        >
+          {isLight ? <MoonIcon /> : <SunIcon />}
+        </button>
       </header>
 
       {/* ── Sidebar overlay on mobile ── */}
@@ -280,6 +332,19 @@ export default function App() {
         />
 
         <div className="sidebar-bottom">
+          <button
+            className="theme-toggle"
+            onClick={toggleTheme}
+            aria-pressed={isLight}
+            aria-label={isLight ? "Switch to dark theme" : "Switch to light theme"}
+            title={isLight ? "Switch to dark theme" : "Switch to light theme"}
+          >
+            {isLight ? <MoonIcon /> : <SunIcon />}
+            <span className="theme-toggle-label">{isLight ? "Light" : "Dark"} theme</span>
+            <span className="theme-switch" aria-hidden="true">
+              <span className="theme-knob" />
+            </span>
+          </button>
           {user ? (
             <div className="sidebar-user">
               {user.picture
@@ -312,30 +377,31 @@ export default function App() {
 
         {error && <div className="error-bar" role="alert">{error}</div>}
 
+        <AnimatePresence mode="wait" initial={false}>
         {activePage === "research" ? (
           hasStarted ? (
             /* ── Active conversation ── */
-            <div className="convo">
-              <div className="convo-query-card">{query}</div>
+            <motion.div key="convo" className="convo" {...viewMotion}>
+              <Rise className="convo-query-card">{query}</Rise>
 
               {(steps.length > 0 || isRunning) && (
-                <div className="convo-block">
+                <Rise className="convo-block">
                   <span className="eyebrow">Agent pipeline</span>
                   <AgentPipeline steps={steps} isRunning={isRunning} />
-                </div>
+                </Rise>
               )}
 
-              <div className="convo-block">
+              <Rise className="convo-block" delay={0.05}>
                 <span className="eyebrow">Agent activity</span>
                 <AgentTimeline steps={steps} isRunning={isRunning} />
-              </div>
+              </Rise>
 
-              <div className="convo-block">
+              <Rise className="convo-block" delay={0.1}>
                 <span className="eyebrow">Final report</span>
                 <ReportView report={report} chartPath={chartPath} isRunning={isRunning} hasStarted={hasStarted} />
-              </div>
+              </Rise>
 
-              <div className="convo-composer">
+              <Rise className="convo-composer" delay={0.15}>
                 <Composer
                   query={query}
                   setQuery={setQuery}
@@ -343,49 +409,73 @@ export default function App() {
                   isRunning={isRunning}
                   placeholder="Ask a follow-up question…"
                 />
-              </div>
-            </div>
+              </Rise>
+            </motion.div>
           ) : (
-            /* ── Idle hero ── */
-            <div className="hero">
-              <div className="hero-mark"><BrandMark size={46} /></div>
-              <div className="hero-eyebrow">Agentic research · 5 agents</div>
-              <h1 className="hero-greeting">
+            /* ── Idle hero: staggered entrance ── */
+            <motion.div
+              key="hero"
+              className="hero"
+              variants={staggerParent}
+              initial="hidden"
+              animate="show"
+              exit={{ opacity: 0, y: -10, transition: { duration: DUR, ease: EASE } }}
+            >
+              <motion.div className="hero-mark" variants={riseChild}>
+                <BrandMark size={46} />
+              </motion.div>
+              <motion.div className="hero-eyebrow" variants={riseChild}>
+                Agentic research · 5 agents
+              </motion.div>
+              <motion.h1 className="hero-greeting" variants={riseChild}>
                 What are we digging into today{firstName ? ", " : ""}
                 {firstName && <span className="hero-name">{firstName}</span>}?
-              </h1>
-              <Composer
-                query={query}
-                setQuery={setQuery}
-                onSubmit={handleSubmit}
-                isRunning={isRunning}
-                autoFocus
-                placeholder="Ask a research question…"
-              />
+              </motion.h1>
+              <motion.div className="hero-composer" variants={riseChild}>
+                <Composer
+                  query={query}
+                  setQuery={setQuery}
+                  onSubmit={handleSubmit}
+                  isRunning={isRunning}
+                  autoFocus
+                  placeholder="Ask a research question…"
+                />
+              </motion.div>
               <div className="chip-row">
-                {CHIP_TOOLS.map((key) => {
+                {CHIP_TOOLS.map((key, idx) => {
                   const item = NAV_ITEMS.find((n) => n.key === key);
                   return (
-                    <button key={key} className="chip" onClick={() => goToPage(key)}>
+                    <motion.button
+                      key={key}
+                      className="chip"
+                      onClick={() => goToPage(key)}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.32 + idx * 0.05, duration: 0.22, ease: EASE }}
+                      whileHover={{ scale: 1.05, y: -1 }}
+                      whileTap={{ scale: 0.96 }}
+                    >
                       {item.icon}
                       {item.label}
-                    </button>
+                    </motion.button>
                   );
                 })}
               </div>
-            </div>
+            </motion.div>
           )
         ) : (
           /* ── Tool page ── */
-          <div className="tool-page">
-            <div className="tool-page-head">
+          <motion.div key={`tool-${activePage}`} className="tool-page" {...viewMotion}>
+            <Rise className="tool-page-head">
               <h1 className="tool-page-title">{TOOL_META[activePage].title}</h1>
               <p className="tool-page-subtitle">{TOOL_META[activePage].subtitle}</p>
-            </div>
+            </Rise>
             <ToolsPanel activeTool={activePage} setActiveTool={setActivePage} />
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
     </div>
+    </MotionConfig>
   );
 }
