@@ -82,6 +82,28 @@ function MoonIcon() {
   );
 }
 
+function SignOutIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+}
+
+function ChevronUpIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true">
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
   { key: "research",   label: "Research",        icon: (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -151,6 +173,8 @@ export default function App() {
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [activeReportId, setActiveReportId] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem("ra-theme") || "dark");
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
   const closeStreamRef = useRef(null);
 
   /* Dark / light theme: attribute on <html> + a short cross-fade window */
@@ -162,6 +186,24 @@ export default function App() {
     const t = setTimeout(() => root.classList.remove("theming"), 340);
     return () => clearTimeout(t);
   }, [theme]);
+
+  /* Account popover: close on outside tap or Escape */
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    function onPointerDown(e) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target))
+        setUserMenuOpen(false);
+    }
+    function onKeyDown(e) {
+      if (e.key === "Escape") setUserMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [userMenuOpen]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -178,6 +220,7 @@ export default function App() {
   function handleLogout() {
     localStorage.removeItem("token");
     setUser(null);
+    setUserMenuOpen(false);
   }
 
   function stopStream() {
@@ -346,15 +389,61 @@ export default function App() {
             </span>
           </button>
           {user ? (
-            <div className="sidebar-user">
-              {user.picture
-                ? <img src={user.picture} alt="" className="sidebar-avatar" referrerPolicy="no-referrer" />
-                : <span className="sidebar-avatar-placeholder">{(user.name || user.email)[0].toUpperCase()}</span>
-              }
-              <div className="sidebar-user-info">
-                <span className="sidebar-user-name">{user.name || user.email}</span>
-                <button className="sidebar-signout" onClick={handleLogout}>Sign out</button>
-              </div>
+            <div className="user-menu-wrap" ref={userMenuRef}>
+              <button
+                className="sidebar-user"
+                onClick={() => setUserMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                aria-label="Account menu"
+                title="Account"
+              >
+                {user.picture
+                  ? <img src={user.picture} alt="" className="sidebar-avatar" referrerPolicy="no-referrer" />
+                  : <span className="sidebar-avatar-placeholder">{(user.name || user.email)[0].toUpperCase()}</span>
+                }
+                <div className="sidebar-user-info">
+                  <span className="sidebar-user-name">{user.name || user.email}</span>
+                </div>
+                <span className={`sidebar-user-chevron ${userMenuOpen ? "open" : ""}`} aria-hidden="true">
+                  <ChevronUpIcon />
+                </span>
+              </button>
+              <AnimatePresence>
+                {userMenuOpen && (
+                  <motion.div
+                    className="user-menu"
+                    role="menu"
+                    aria-label="Account"
+                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                    transition={{ duration: 0.18, ease: EASE }}
+                  >
+                    <div className="user-menu-head">
+                      {user.picture
+                        ? <img src={user.picture} alt="" className="user-menu-avatar" referrerPolicy="no-referrer" />
+                        : <span className="user-menu-avatar user-menu-avatar-placeholder">{(user.name || user.email)[0].toUpperCase()}</span>
+                      }
+                      <div className="user-menu-id">
+                        <span className="user-menu-name">{user.name || user.email}</span>
+                        {user.email && user.name && (
+                          <span className="user-menu-email">{user.email}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="user-menu-divider" aria-hidden="true" />
+                    <button
+                      className="user-menu-item user-menu-signout"
+                      role="menuitem"
+                      onClick={handleLogout}
+                    >
+                      <SignOutIcon />
+                      Sign out
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           ) : (
             <a className="sidebar-login-btn" href={loginUrl()}>
