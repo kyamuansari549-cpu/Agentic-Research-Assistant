@@ -1,12 +1,13 @@
 import { useRef, useEffect } from "react";
 
-function ArrowUp() {
+function LaunchIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
       aria-hidden="true">
-      <line x1="12" y1="19" x2="12" y2="5" />
-      <polyline points="5 12 12 5 19 12" />
+      <circle cx="6.6" cy="17.4" r="2.3" fill="currentColor" stroke="none" />
+      <line x1="9.6" y1="14.4" x2="17" y2="7" />
+      <polyline points="11 7 17 7 17 13" />
     </svg>
   );
 }
@@ -80,7 +81,7 @@ export default function Composer({
           aria-label={isRunning ? "Agents are working" : "Send question"}
           title={isRunning ? "Agents are working" : "Send question"}
         >
-          {isRunning ? <Spinner /> : <ArrowUp />}
+          {isRunning ? <Spinner /> : <LaunchIcon />}
         </button>
       </div>
     </form>

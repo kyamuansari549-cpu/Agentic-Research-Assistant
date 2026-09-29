@@ -220,7 +220,6 @@ export default function App() {
   }
 
   const firstName = user?.name ? user.name.split(" ")[0] : null;
-  const greeting = firstName ? `What's cooking, ${firstName}?` : "What's cooking?";
 
   return (
     <div className={`shell ${sidebarCollapsed ? "shell--collapsed" : ""}`}>
@@ -347,10 +346,14 @@ export default function App() {
               </div>
             </div>
           ) : (
-            /* ── Idle hero, Claude-style ── */
+            /* ── Idle hero ── */
             <div className="hero">
               <div className="hero-mark"><BrandMark size={46} /></div>
-              <h1 className="hero-greeting">{greeting}</h1>
+              <div className="hero-eyebrow">Agentic research · 5 agents</div>
+              <h1 className="hero-greeting">
+                What are we digging into today{firstName ? ", " : ""}
+                {firstName && <span className="hero-name">{firstName}</span>}?
+              </h1>
               <Composer
                 query={query}
                 setQuery={setQuery}
