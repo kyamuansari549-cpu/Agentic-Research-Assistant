@@ -7,20 +7,16 @@ import HistorySidebar from "./components/HistorySidebar.jsx";
 import ToolsPanel from "./components/ToolsPanel.jsx";
 import { startResearch, streamResearch, fetchMe, loginUrl, fetchReport } from "./api";
 
-/* ── Brand starburst mark ─────────────────────────── */
+/* ── Brand mark: custom "R" monogram for Research ─── */
 function BrandMark({ size = 26 }) {
-  const rays = 12;
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
-      {Array.from({ length: rays }).map((_, i) => (
-        <line
-          key={i}
-          x1="20" y1="20" x2="20" y2="7"
-          stroke="#d97757" strokeWidth="3.2" strokeLinecap="round"
-          transform={`rotate(${(i * 360) / rays} 20 20)`}
-        />
-      ))}
-      <circle cx="20" cy="20" r="4.5" fill="#d97757" />
+      <rect x="1.5" y="1.5" width="37" height="37" rx="10.5" fill="#211a15" stroke="#3a2e26" strokeWidth="1.5" />
+      <g stroke="#d97757" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="14.5" y1="10.5" x2="14.5" y2="29.5" />
+        <path d="M14.5 10.5 H22.8 A6 6 0 0 1 22.8 22.5 H14.5" />
+        <line x1="19.5" y1="22.5" x2="27" y2="29.5" />
+      </g>
     </svg>
   );
 }
