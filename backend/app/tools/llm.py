@@ -78,13 +78,13 @@ def _call_gemini(system_prompt: str, user_prompt: str, temperature: float) -> st
         if resp.status_code != 200:
             raise RuntimeError(
                 f"Gemini fallback failed (HTTP {resp.status_code}): "
-                f"{resp.text[:200]}"
+                f"{resp.text[:400]}"
             )
         try:
             text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError, IndexError, ValueError) as exc:
             raise RuntimeError(
-                f"Gemini returned an unexpected response: {resp.text[:200]}"
+                f"Gemini returned an unexpected response: {resp.text[:400]}"
             ) from exc
         return text.strip()
     raise RuntimeError("Gemini fallback rate-limited after retry.")

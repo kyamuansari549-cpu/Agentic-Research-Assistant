@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # --- LLM fallback (Groq primary -> Gemini on 429) ---
     # Same Google AI Studio key as embeddings (DocQA); NOT the OAuth client id/secret.
     google_api_key: str = ""  # optional -- enables Gemini fallback when Groq rate-limits
-    gemini_model: str = "gemini-2.5-flash"  # override with GEMINI_MODEL if needed
+    gemini_model: str = "gemini-3.8-flash"  # override with GEMINI_MODEL if Google retires it again
     llm_fallback_enabled: bool = True  # set false to keep legacy Groq-only long backoff
     max_revision_cycles: int = 1
     max_subtasks: int = 3
