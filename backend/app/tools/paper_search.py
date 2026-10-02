@@ -248,6 +248,64 @@ def _unpaywall_pdf(doi: str) -> Optional[str]:
         return None
 
 
+RELEVANCE_SYSTEM = (
+    "You are a precise research assistant filtering academic papers by "
+    "relevance. Reply with only the requested paper numbers or NONE -- "
+    "no explanations, no other text."
+)
+
+
+def filter_relevant_papers(query: str, papers: List[Dict], max_keep: int = 6) -> List[Dict]:
+    """LLM relevance gate.
+
+    Scholarly APIs (especially the OpenAlex/arXiv fallbacks) rank loosely:
+    a paper can match on a stray keyword like a year in its title while
+    being about something entirely different. This asks the LLM to keep
+    only papers genuinely about the query. Any failure -> keep the
+    original order (never silently drop everything).
+    """
+    if not papers:
+        return papers
+    try:
+        from app.tools.llm import call_llm  # lazy: avoids import cycles
+    except Exception:  # noqa: BLE001
+        return papers[:max_keep]
+
+    listing = "\n".join(
+        f"[{i + 1}] {p.get('title', '')} -- {(p.get('abstract') or '')[:280]}"
+        for i, p in enumerate(papers)
+    )
+    try:
+        resp = call_llm(
+            RELEVANCE_SYSTEM,
+            f"Research query: {query}\n\nCandidate papers:\n{listing}\n\n"
+            "Which of these papers are directly relevant to the research query? "
+            "Reply with ONLY the relevant paper numbers, comma-separated "
+            f"(e.g. '1,3,5'), at most {max_keep}. If none are relevant, reply 'NONE'.",
+        )
+    except Exception as exc:  # noqa: BLE001 -- LLM down: don't break research
+        print(f"[paper_search] relevance filter failed: {exc}", flush=True)
+        return papers[:max_keep]
+
+    if "NONE" in resp.upper():
+        print("[paper_search] relevance filter: no papers relevant", flush=True)
+        return []
+
+    keep: List[Dict] = []
+    for n in re.findall(r"\d+", resp):
+        idx = int(n) - 1
+        if 0 <= idx < len(papers) and papers[idx] not in keep:
+            keep.append(papers[idx])
+        if len(keep) >= max_keep:
+            break
+
+    print(
+        f"[paper_search] relevance filter: kept {len(keep)}/{len(papers)}",
+        flush=True,
+    )
+    return keep if keep else papers[:max_keep]
+
+
 # ---------------------------------------------------------------------------
 # Merge / dedupe / public entry point
 # ---------------------------------------------------------------------------

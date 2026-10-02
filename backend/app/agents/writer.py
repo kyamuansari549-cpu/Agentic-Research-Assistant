@@ -20,18 +20,23 @@ section in the report (before "Sources"). For EACH paper on that list write \
 one entry in exactly this format:
 **[Paper title](paper page url)** (Year) — Author 1, Author 2. *Venue*. \
 Cited by N.
-[PDF](pdf url) — only if a PDF link is given for that paper; omit otherwise.
+[PDF](pdf url) — only if a real PDF link is given for that paper; omit \
+the PDF line entirely otherwise.
 One or two sentences on what the paper contributes, based ONLY on its \
 abstract below.
 Rules: use ONLY the papers from the provided list -- never invent, rename, \
-or merge papers, authors, venues, or links. If the list is empty, omit the \
-section entirely."""
+or merge papers, authors, venues, or links. If a paper's page URL is NONE, \
+write its title in bold WITHOUT a markdown link (never link to "NONE" or \
+leave a half-written link). If the list is empty, omit the section entirely."""
 
 
 def _format_papers(papers: list) -> str:
     """Renders the paper records as an LLM-safe reference block."""
     entries = []
     for i, p in enumerate(papers, 1):
+        # Square brackets in a title would break the markdown link syntax
+        # the Writer is asked to produce, so neutralize them up front.
+        title = (p.get("title", "") or "").replace("[", "(").replace("]", ")")
         authors = ", ".join(p.get("authors", [])[:6])
         if len(p.get("authors", [])) > 6:
             authors += " et al."
@@ -40,11 +45,11 @@ def _format_papers(papers: list) -> str:
         cites = p.get("citations") or 0
         abstract = (p.get("abstract") or "")[:900]
         lines = [
-            f"[{i}] Title: {p.get('title', '')}",
+            f"[{i}] Title: {title}",
             f"    Authors: {authors}",
             f"    Venue/year: {venue}, {year} | Cited by: {cites}",
-            f"    Page URL: {p.get('url') or 'none'}",
-            f"    PDF URL: {p.get('pdf_url') or 'none (paywalled or no open copy)'}",
+            f"    Page URL: {p.get('url') or 'NONE'}",
+            f"    PDF URL: {p.get('pdf_url') or 'NONE (paywalled or no open copy)'}",
             f"    Abstract: {abstract}",
         ]
         entries.append("\n".join(lines))

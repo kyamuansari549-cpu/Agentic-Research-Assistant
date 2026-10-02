@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app.state import AgentState
 from app.tools.llm import call_llm
 from app.tools.web_search import web_search
-from app.tools.paper_search import search_papers
+from app.tools.paper_search import search_papers, filter_relevant_papers
 from app.config import settings
 
 SYSTEM_PROMPT = """You are a research agent. You are given a sub-question and \
@@ -75,7 +75,12 @@ def researcher_node(state: AgentState) -> dict:
     # Real-paper search runs ONCE per job on the original query (not per
     # sub-task, and not again on REVISE loops -- results are deterministic
     # for a given query, so re-fetching would just burn API calls).
-    papers = state.get("papers") or search_papers(state["query"], max_results=6)
+    # The relevance gate drops API-ranking misses (e.g. a paper that only
+    # matched a stray year in its title) before the Writer ever sees them.
+    papers = state.get("papers")
+    if not papers:
+        papers = search_papers(state["query"], max_results=10)
+        papers = filter_relevant_papers(state["query"], papers, max_keep=6)
     paper_urls = [p["url"] for p in papers if p.get("url")]
 
     # Run all sub-tasks concurrently. Search calls stay throttled (via the
