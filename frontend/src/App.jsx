@@ -546,20 +546,24 @@ export default function App() {
                 </AnimatePresence>
               </Rise>
 
-              <Rise className="convo-block" delay={0.1}>
-                <span className="eyebrow">Final report</span>
-                <ReportView report={report} chartPath={chartPath} isRunning={isRunning} hasStarted={hasStarted} />
-              </Rise>
+              {report && (
+                <Rise className="convo-block" delay={0.1}>
+                  <span className="eyebrow">Final report</span>
+                  <ReportView report={report} chartPath={chartPath} isRunning={isRunning} hasStarted={hasStarted} />
+                </Rise>
+              )}
 
-              <Rise className="convo-composer" delay={0.15}>
-                <Composer
-                  query={query}
-                  setQuery={setQuery}
-                  onSubmit={handleSubmit}
-                  isRunning={isRunning}
-                  placeholder="Ask a follow-up question…"
-                />
-              </Rise>
+              {!isRunning && (
+                <Rise className="convo-composer" delay={0.15}>
+                  <Composer
+                    query={query}
+                    setQuery={setQuery}
+                    onSubmit={handleSubmit}
+                    isRunning={isRunning}
+                    placeholder="Ask a follow-up question…"
+                  />
+                </Rise>
+              )}
             </motion.div>
           ) : (
             /* ── Idle hero: staggered entrance ── */
