@@ -24,6 +24,10 @@ Cited by N.
 the PDF line entirely otherwise.
 One or two sentences on what the paper contributes, based ONLY on its \
 abstract below.
+Whenever you mention one of these papers ANYWHERE else in the report \
+(body text, tables, bullet lists), always render its title as a markdown \
+link to its page URL, and append " ([PDF](pdf url))" immediately after \
+the title whenever a real PDF link is given for that paper.
 Rules: use ONLY the papers from the provided list -- never invent, rename, \
 or merge papers, authors, venues, or links. If a paper's page URL is NONE, \
 write its title in bold WITHOUT a markdown link (never link to "NONE" or \
