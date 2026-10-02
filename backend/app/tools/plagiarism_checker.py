@@ -12,9 +12,12 @@ Limits (stated honestly in the disclaimer): this finds VERBATIM copies
 on the indexed web only. Paraphrased copying, or sources outside the
 search index (e.g. Turnitin's academic database), will not be flagged.
 """
+import html
 import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
+
+import httpx
 
 from app.config import settings
 
@@ -24,6 +27,8 @@ SEARCH_RESULTS = 3
 SEARCH_TIMEOUT = 20
 _QUERY_MAX_LEN = 250  # quoted query truncation -- very long queries degrade
 _FINGERPRINT_LEN = 120  # chars of a sentence used as the match fingerprint
+_FETCH_TIMEOUT = 10  # seconds per page fetch
+_FETCH_MAX_BYTES = 800_000  # don't download huge pages
 
 _DISCLAIMER = (
     "Web-match check: compares distinctive sentences from your text against "
@@ -35,8 +40,22 @@ _DISCLAIMER = (
 
 
 def _split_sentences(text: str) -> List[str]:
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
-    return [p.strip() for p in parts if len(p.strip()) >= MIN_SENTENCE_LEN]
+    # Split after . ! ? -- also treating citation markers like [111][112]
+    # (common in copied Wikipedia text) as part of the boundary, so
+    # "models.[111][112] Early..." becomes two sentences and the markers
+    # stay attached to the sentence they belong to.
+    chunks = re.split(r"([.!?](?:\[\d+\])*)\s+", text.strip())
+    sentences, buf = [], ""
+    for i, chunk in enumerate(chunks):
+        if i % 2 == 0:
+            buf = chunk
+        else:
+            buf += chunk  # punctuation (+ citations) belongs to the sentence
+            sentences.append(buf)
+            buf = ""
+    if buf.strip():
+        sentences.append(buf)  # trailing text without terminal punctuation
+    return [s.strip() for s in sentences if len(s.strip()) >= MIN_SENTENCE_LEN]
 
 
 def _pick_sentences(sentences: List[str]) -> List[str]:
@@ -47,6 +66,9 @@ def _pick_sentences(sentences: List[str]) -> List[str]:
 
 
 def _normalize(s: str) -> str:
+    # Drop citation markers like [111] -- they render differently in HTML
+    # (<sup> tags) than in copied plain text, and shouldn't break a match.
+    s = re.sub(r"\[\d+\]", "", s)
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
@@ -74,9 +96,53 @@ def _find_match(sentence: str, results: List[Dict]) -> Optional[str]:
     return None
 
 
+def _fetch_page_text(url: str) -> str:
+    """Fetch a page and return its visible text (no extra API cost)."""
+    try:
+        with httpx.stream(
+            "GET",
+            url,
+            timeout=_FETCH_TIMEOUT,
+            follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; ResearchAssistant/1.0)"},
+        ) as resp:
+            if resp.status_code != 200:
+                return ""
+            if "html" not in resp.headers.get("content-type", ""):
+                return ""  # skip PDFs / binaries
+            chunks, total = [], 0
+            for chunk in resp.iter_bytes(65536):
+                total += len(chunk)
+                if total > _FETCH_MAX_BYTES:
+                    break
+                chunks.append(chunk)
+            raw_html = b"".join(chunks).decode("utf-8", errors="ignore")
+    except Exception as exc:  # noqa: BLE001 -- network issues: just no match
+        print(f"[plagiarism] fetch failed for {url}: {exc}", flush=True)
+        return ""
+    no_script = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", raw_html)
+    text = re.sub(r"(?s)<[^>]+>", " ", no_script)
+    return html.unescape(re.sub(r"\s+", " ", text)).strip()
+
+
 def _check_one(client, sentence: str) -> Dict:
     results = _search_sentence(client, sentence)
-    return {"sentence": sentence, "match_url": _find_match(sentence, results)}
+    url = _find_match(sentence, results)
+    if url:
+        return {"sentence": sentence, "match_url": url}
+    # Search snippets are short windows into long pages -- a miss there
+    # doesn't mean the sentence isn't on the page. Verify against the
+    # full text of the top results (free: plain HTTP fetch, no API cost).
+    fingerprint = _normalize(sentence)[:_FINGERPRINT_LEN]
+    for r in results[:2]:
+        page_url = r.get("url", "")
+        if not page_url:
+            continue
+        page_text = _fetch_page_text(page_url)
+        if page_text and fingerprint in _normalize(page_text):
+            print(f"[plagiarism] full-page match: {page_url}", flush=True)
+            return {"sentence": sentence, "match_url": page_url}
+    return {"sentence": sentence, "match_url": None}
 
 
 def _unavailable(summary: str) -> Dict:
