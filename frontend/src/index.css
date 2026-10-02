@@ -622,7 +622,26 @@ textarea, input, select { font-family: var(--font); }
   font-size: 0.86rem;
   padding: 0.65rem 1.5rem;
   line-height: 1.5;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
 }
+.error-text { flex: 1; }
+.error-retry {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.32rem 0.9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.error-retry:hover { background: var(--danger); color: #fff; }
+.error-retry:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
 
 /* ═══════════════════════════════════════════════════
    HERO — centered greeting + composer (idle state)

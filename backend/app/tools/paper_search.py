@@ -270,9 +270,10 @@ def _unpaywall_pdf(doi: str) -> Optional[str]:
 
 
 RELEVANCE_SYSTEM = (
-    "You are a precise research assistant filtering academic papers by "
-    "relevance. Reply with only the requested paper numbers or NONE -- "
-    "no explanations, no other text."
+    "You are a relevance judge for academic papers. Be INCLUSIVE: when in "
+    "doubt about a paper, keep it. Drop a paper ONLY if it is clearly about "
+    "something unrelated to the query. Reply with only the requested paper "
+    "numbers or NONE -- no explanations, no other text."
 )
 
 
@@ -300,16 +301,29 @@ def filter_relevant_papers(query: str, papers: List[Dict], max_keep: int = 6) ->
         resp = call_llm(
             RELEVANCE_SYSTEM,
             f"Research query: {query}\n\nCandidate papers:\n{listing}\n\n"
-            "Which of these papers are directly relevant to the research query? "
+            "Which of these papers would be useful background for someone "
+            "researching the query? A paper is RELEVANT if it is about the "
+            "query's subject matter OR a core sub-topic of it. "
+            'Example: for "ev vehicle trends in 2026", papers on EV batteries, '
+            "EV charging infrastructure, or the EV market ARE relevant. "
+            'For "AI trends in 2026", "The State of World Fisheries and '
+            'Aquaculture 2026" is NOT relevant -- it is about fish, not AI; '
+            "only the year matches. "
             "Reply with ONLY the relevant paper numbers, comma-separated "
             f"(e.g. '1,3,5'), at most {max_keep}. If none are relevant, reply 'NONE'.",
+            temperature=0.0,
         )
     except Exception as exc:  # noqa: BLE001 -- LLM down: don't break research
         print(f"[paper_search] relevance filter failed: {exc}", flush=True)
         return papers[:max_keep]
 
     if "NONE" in resp.upper():
-        print("[paper_search] relevance filter: no papers relevant", flush=True)
+        dropped = ", ".join(f"[{i + 1}] {(p.get('title') or '')[:70]}" for i, p in enumerate(papers))
+        print(
+            f"[paper_search] relevance filter: dropped all {len(papers)} "
+            f"candidates: {dropped}",
+            flush=True,
+        )
         return []
 
     keep: List[Dict] = []
@@ -320,8 +334,10 @@ def filter_relevant_papers(query: str, papers: List[Dict], max_keep: int = 6) ->
         if len(keep) >= max_keep:
             break
 
+    dropped_nums = [i + 1 for i in range(len(papers)) if papers[i] not in keep]
     print(
-        f"[paper_search] relevance filter: kept {len(keep)}/{len(papers)}",
+        f"[paper_search] relevance filter: kept {len(keep)}/{len(papers)} "
+        f"(dropped {dropped_nums})",
         flush=True,
     )
     return keep if keep else papers[:max_keep]

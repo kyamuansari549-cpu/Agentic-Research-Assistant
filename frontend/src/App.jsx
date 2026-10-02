@@ -170,6 +170,17 @@ export default function App() {
   const [hasStarted, setHasStarted] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false); // agent activity collapsed by default
   const [error, setError] = useState(null);
+  const [errorRetryable, setErrorRetryable] = useState(false);
+  // Helper pair: stream drops are retryable (backend often finishes the
+  // job anyway), other errors are not.
+  const showError = (message, retryable = false) => {
+    setError(message);
+    setErrorRetryable(retryable);
+  };
+  const clearError = () => {
+    setError(null);
+    setErrorRetryable(false);
+  };
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [activeReportId, setActiveReportId] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem("ra-theme") || "dark");
@@ -238,7 +249,7 @@ export default function App() {
     setChartPath(null);
     setIsRunning(false);
     setHasStarted(false);
-    setError(null);
+    clearError();
     setActiveReportId(null);
     setActivePage("research");
     setSidebarOpen(false);
@@ -252,7 +263,7 @@ export default function App() {
   async function handleSubmit() {
     stopStream();
     setSteps([]); setReport(""); setChartPath(null);
-    setError(null); setIsRunning(true); setHasStarted(true);
+    clearError(); setIsRunning(true); setHasStarted(true);
     setActivityOpen(false); // activity stays minimized like Claude's
     setActiveReportId(null);
     try {
@@ -269,12 +280,16 @@ export default function App() {
           setHistoryRefreshKey((k) => k + 1);
         },
         onError: () => {
-          setError("Lost connection to the agent server.");
+          showError(
+            "Connection to the agent server was interrupted. Your report may "
+            + "still be generating — check history in a moment, or try again.",
+            true, // retryable: starts a fresh job for the same query
+          );
           setIsRunning(false);
         },
       });
     } catch (err) {
-      setError(err.message === "UNAUTHENTICATED"
+      showError(err.message === "UNAUTHENTICATED"
         ? "Please sign in to run a research query."
         : err.message);
       setIsRunning(false);
@@ -283,13 +298,13 @@ export default function App() {
 
   async function handleSelectHistoryReport(reportId) {
     stopStream();
-    setError(null); setSteps([]); setHasStarted(true);
+    clearError(); setSteps([]); setHasStarted(true);
     setActiveReportId(reportId);
     setActivePage("research");
     try {
       const r = await fetchReport(reportId);
       setQuery(r.query); setReport(r.report_markdown); setChartPath(r.chart_path);
-    } catch (err) { setError(err.message); }
+    } catch (err) { showError(err.message); }
   }
 
   if (!authChecked) {
@@ -465,7 +480,20 @@ export default function App() {
           <ExpandIcon />
         </button>
 
-        {error && <div className="error-bar" role="alert">{error}</div>}
+        {error && (
+          <div className="error-bar" role="alert">
+            <span className="error-text">{error}</span>
+            {errorRetryable && (
+              <button
+                type="button"
+                className="error-retry"
+                onClick={() => { clearError(); handleSubmit(); }}
+              >
+                Try again
+              </button>
+            )}
+          </div>
+        )}
 
         <AnimatePresence mode="wait" initial={false}>
         {activePage === "research" ? (
