@@ -24,7 +24,6 @@ from app.config import settings
 MIN_SENTENCE_LEN = 40  # shorter fragments aren't distinctive enough to check
 MAX_SENTENCES = 6  # Tavily calls per check -- quota-friendly
 SEARCH_RESULTS = 3
-SEARCH_TIMEOUT = 20
 _QUERY_MAX_LEN = 250  # quoted query truncation -- very long queries degrade
 _FINGERPRINT_LEN = 120  # chars of a sentence used as the match fingerprint
 _FETCH_TIMEOUT = 10  # seconds per page fetch
@@ -74,16 +73,28 @@ def _normalize(s: str) -> str:
 
 def _search_sentence(client, sentence: str) -> List[Dict]:
     """Verbatim web search for one sentence; returns raw Tavily results."""
+    # Strip citation markers ([111]) -- they're noise for the search engine.
+    clean = re.sub(r"\[\d+\]", "", sentence).strip()
+    query = f'"{clean[:_QUERY_MAX_LEN]}"'
     try:
+        # exact_match=True: Tavily returns ONLY results containing the quoted
+        # phrase verbatim (quotes alone don't guarantee this -- without the
+        # flag Tavily falls back to semantic search and may miss the source).
         resp = client.search(
-            query=f'"{sentence[:_QUERY_MAX_LEN]}"',
+            query=query,
             max_results=SEARCH_RESULTS,
-            timeout=SEARCH_TIMEOUT,
+            exact_match=True,
         )
-        return resp.get("results", [])
+        results = resp.get("results", [])
     except Exception as exc:  # noqa: BLE001 -- one bad search must not kill the check
         print(f"[plagiarism] search failed: {exc}", flush=True)
         return []
+    print(
+        f"[plagiarism] search {clean[:50]!r}... -> {len(results)} results: "
+        f"{[r.get('url') for r in results]}",
+        flush=True,
+    )
+    return results
 
 
 def _find_match(sentence: str, results: List[Dict]) -> Optional[str]:
