@@ -7,7 +7,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   paraphraseText, checkPlagiarism, detectAIContent,
-  uploadPDF, chatWithPDF, summarizeText, findResearchGaps,
+  uploadPDF, chatWithPDF, deletePDFSession, summarizeText, findResearchGaps,
 } from "../api";
 
 // ─── Shared helpers ────────────────────────────────────────────────
@@ -251,6 +251,12 @@ function PDFChat() {
     finally { setUploading(false); e.target.value = ""; }
   }
 
+  async function handleRemove() {
+    if (!session) return;
+    try { await deletePDFSession(session.session_id); } catch { /* already gone */ }
+    setSession(null); setHistory([]); setQuestion("");
+  }
+
   async function handleAsk(e) {
     e.preventDefault();
     if (!question.trim() || !session) return;
@@ -288,6 +294,12 @@ function PDFChat() {
             </>
           )}
       </label>
+
+      {session && !uploading && (
+        <button type="button" className="pdf-remove-btn" onClick={handleRemove}>
+          Remove PDF
+        </button>
+      )}
 
       <ErrMsg msg={err} />
 

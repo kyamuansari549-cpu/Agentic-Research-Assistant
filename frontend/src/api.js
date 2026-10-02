@@ -169,6 +169,16 @@ export async function chatWithPDF(sessionId, question) {
   return res.json();
 }
 
+export async function deletePDFSession(sessionId) {
+  const res = await fetch(`${API_BASE}/api/pdf-session/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (res.status === 401) throw new Error("UNAUTHENTICATED");
+  if (!res.ok) throw new Error("Failed to remove PDF");
+  return res.json();
+}
+
 export async function summarizeText(text, mode = "brief") {
   const res = await fetch(`${API_BASE}/api/summarize`, {
     method: "POST",

@@ -11,7 +11,7 @@ Groq-only retries (same resilience, one provider).
 import time
 
 import httpx
-from groq import Groq, RateLimitError
+from groq import Groq, APIStatusError
 
 from app.config import settings
 
@@ -43,7 +43,8 @@ class _TransientLLMError(Exception):
 
 
 def _call_groq_once(system_prompt: str, user_prompt: str, temperature: float) -> str:
-    """Single Groq attempt. 429 -> _TransientLLMError; anything else raises as-is."""
+    """Single Groq attempt. 429/5xx -> _TransientLLMError (eligible for
+    Gemini failover); anything else (bad key, bad request) raises as-is."""
     try:
         response = _groq_client.chat.completions.create(
             model=settings.groq_model,
@@ -55,8 +56,14 @@ def _call_groq_once(system_prompt: str, user_prompt: str, temperature: float) ->
             ],
         )
         return response.choices[0].message.content.strip()
-    except RateLimitError as exc:
-        raise _TransientLLMError("groq", 429, str(exc)) from exc
+    except APIStatusError as exc:
+        # RateLimitError (429) is a subclass of APIStatusError, so this
+        # covers both 429 and 5xx (overload / internal errors). Anything
+        # else (401 bad key, 400 bad request, 404 retired model) is
+        # non-transient: fail fast so the real cause surfaces.
+        if exc.status_code == 429 or exc.status_code in (500, 502, 503, 529):
+            raise _TransientLLMError("groq", exc.status_code, str(exc)) from exc
+        raise
 
 
 def _call_gemini_once(system_prompt: str, user_prompt: str, temperature: float) -> str:

@@ -1480,6 +1480,18 @@ textarea, input, select { font-family: var(--font); }
 }
 .pdf-filename { font-size: 0.89rem; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
 .pdf-meta { font-size: 0.77rem; color: var(--text-3); }
+.pdf-remove-btn {
+  align-self: flex-start;
+  margin-top: 0.45rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  color: var(--text-3);
+  font-size: 0.78rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.pdf-remove-btn:hover { color: var(--danger, #e56b6b); border-color: var(--danger, #e56b6b); }
 .pdf-upload-title { font-size: 0.93rem; font-weight: 500; color: var(--text); }
 .pdf-upload-hint  { font-size: 0.77rem; color: var(--text-3); }
 

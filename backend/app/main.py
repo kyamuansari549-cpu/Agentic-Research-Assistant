@@ -46,7 +46,7 @@ from app.auth import (
 from app.tools.paraphraser import paraphrase
 from app.tools.plagiarism_checker import check_plagiarism
 from app.tools.ai_detector import detect_ai_content
-from app.tools.pdf_parser import parse_pdf, store_pdf_session, get_pdf_session
+from app.tools.pdf_parser import parse_pdf, store_pdf_session, get_pdf_session, delete_pdf_session
 from app.tools.gap_finder import find_research_gaps, chat_with_pdf
 from app.tools.summarizer import summarize
 
@@ -382,7 +382,7 @@ async def pdf_upload(
 
     # Count pages from "--- Page N ---" markers inserted by the parser
     page_count = text.count("--- Page ")
-    session_id = store_pdf_session(file.filename, text)
+    session_id = store_pdf_session(file.filename, text, user["id"])
     preview = text[:300].replace("\n", " ").strip()
 
     return PDFUploadResponse(
@@ -397,11 +397,11 @@ async def pdf_upload(
 @app.post("/api/pdf-chat", response_model=PDFChatResponse)
 def pdf_chat(req: PDFChatRequest, user: dict = Depends(get_current_user)):
     """Ask a question about a previously uploaded PDF."""
-    session = get_pdf_session(req.session_id)
+    session = get_pdf_session(req.session_id, user["id"])
     if not session:
         raise HTTPException(
             status_code=404,
-            detail="PDF session not found. Please re-upload the file.",
+            detail="PDF session not found or expired. Please re-upload the file.",
         )
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
@@ -416,6 +416,16 @@ def pdf_chat(req: PDFChatRequest, user: dict = Depends(get_current_user)):
         question=req.question,
         answer=answer,
     )
+
+
+@app.delete("/api/pdf-session/{session_id}")
+def pdf_session_delete(session_id: str, user: dict = Depends(get_current_user)):
+    """Delete an uploaded PDF's session, freeing server memory immediately."""
+    session = get_pdf_session(session_id, user["id"])
+    if not session:
+        raise HTTPException(status_code=404, detail="PDF session not found.")
+    delete_pdf_session(session_id)
+    return {"deleted": True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
