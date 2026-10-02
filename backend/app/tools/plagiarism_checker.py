@@ -2,15 +2,16 @@
 Plagiarism check tool -- web-match based (real detection).
 
 How it works: the input is split into sentences and the most
-distinctive ones go through three discovery tiers -- (1) Tavily exact-phrase
-search, (2) Wikipedia's own live full-text search (free, always current;
-Wikipedia is the most-copied source on the web), (3) Tavily semantic search
-as a final fallback. Candidate pages are verified by fetching their live
-text and checking for the sentence verbatim: a sentence that appears
-word-for-word on a webpage is hard evidence of copying -- grounded in the
-actual input text, so different inputs give different results (unlike a
-pure LLM guess, which has no corpus to compare against and returns
-similar-looking scores for everything).
+distinctive ones go through three discovery tiers -- (1) Wikipedia's own
+live full-text search (free, always current; Wikipedia is the most-copied
+source on the web, so a hit here costs zero Tavily credits), (2) Tavily
+exact-phrase search, (3) Tavily semantic search as a final fallback.
+Candidate pages are verified by fetching their live text and checking for
+the sentence verbatim: a sentence that appears word-for-word on a webpage
+is hard evidence of copying -- grounded in the actual input text, so
+different inputs give different results (unlike a pure LLM guess, which
+has no corpus to compare against and returns similar-looking scores for
+everything).
 
 Limits (stated honestly in the disclaimer): this finds VERBATIM copies
 on the indexed web only. Paraphrased copying, or sources outside the
@@ -209,15 +210,16 @@ def _search_wikipedia(sentence: str) -> List[Dict]:
 
 
 def _check_one(client, sentence: str) -> Dict:
-    # Tier 1: Tavily exact-phrase search -- precise when the index has the text.
-    results = _search_sentence(client, sentence, exact=True)
-    url = _find_match(sentence, results) or _verify_against_pages(sentence, results)
-    if url:
-        return {"sentence": sentence, "match_url": url}
-    # Tier 2: Wikipedia's own live search -- free, always current, and
-    # Wikipedia is the most-copied source for this kind of check.
+    # Tier 1: Wikipedia's own live search -- FREE (no Tavily credits),
+    # always current, and Wikipedia is the most-copied source for this
+    # kind of check. A hit here costs zero Tavily credits.
     results = _search_wikipedia(sentence)
     url = _verify_against_pages(sentence, results)
+    if url:
+        return {"sentence": sentence, "match_url": url}
+    # Tier 2: Tavily exact-phrase search -- precise when the index has the text.
+    results = _search_sentence(client, sentence, exact=True)
+    url = _find_match(sentence, results) or _verify_against_pages(sentence, results)
     if url:
         return {"sentence": sentence, "match_url": url}
     # Tier 3: Tavily semantic fallback -- topical pages, verified live.
