@@ -548,7 +548,6 @@ export default function App() {
 
               {report && (
                 <Rise className="convo-block" delay={0.1}>
-                  <span className="eyebrow">Final report</span>
                   <ReportView report={report} chartPath={chartPath} isRunning={isRunning} hasStarted={hasStarted} />
                 </Rise>
               )}
