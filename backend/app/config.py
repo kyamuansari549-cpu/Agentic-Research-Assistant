@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     semanticscholar_api_key: str = ""  # optional -- raises S2 rate limits (free key)
     unpaywall_email: str = ""  # optional -- enables legal OA PDF lookup; skipped if unset
     enable_paper_relevance_filter: bool = True  # LLM gate for off-topic papers; disable for ~3-5s faster jobs
+    # --- LLM fallback (Groq primary -> Gemini on 429) ---
+    # Same Google AI Studio key as embeddings (DocQA); NOT the OAuth client id/secret.
+    google_api_key: str = ""  # optional -- enables Gemini fallback when Groq rate-limits
+    gemini_model: str = "gemini-2.5-flash"  # override with GEMINI_MODEL if needed
+    llm_fallback_enabled: bool = True  # set false to keep legacy Groq-only long backoff
     max_revision_cycles: int = 1
     max_subtasks: int = 3
 
