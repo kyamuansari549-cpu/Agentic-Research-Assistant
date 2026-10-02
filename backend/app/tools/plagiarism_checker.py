@@ -1,72 +1,165 @@
 """
-Plagiarism check tool — uses the LLM to analyse text for potential
-plagiarism signals: uncommon phrase patterns, stylistic inconsistencies,
-abrupt topic jumps, and citation mismatches.
+Plagiarism check tool -- web-match based (real detection).
 
-Note: This is an AI-assisted heuristic check, not a database-backed
-plagiarism detector (which would require access to a corpus like
-Turnitin). It flags suspicious patterns and gives an estimated
-originality score, with a clear disclaimer to the user.
+How it works: the input is split into sentences and the most
+distinctive ones are searched verbatim on the public web via Tavily.
+A sentence that appears word-for-word on a webpage is hard evidence
+of copying -- grounded in the actual input text, so different inputs
+give different results (unlike a pure LLM guess, which has no corpus
+to compare against and returns similar-looking scores for everything).
+
+Limits (stated honestly in the disclaimer): this finds VERBATIM copies
+on the indexed web only. Paraphrased copying, or sources outside the
+search index (e.g. Turnitin's academic database), will not be flagged.
 """
-import json
-from app.tools.llm import call_llm
+import re
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Optional
 
-_SYSTEM_PROMPT = """
-You are a plagiarism-detection assistant. Analyse the following text for
-potential plagiarism signals. Look for:
-- Abrupt changes in writing style or vocabulary level
-- Sentences that sound copied from formal sources but lack citations
-- Overuse of well-known exact phrases without quotation marks
-- Factual claims that appear to be lifted from external sources
-- Mismatched tone (academic passages embedded in casual text, or vice versa)
+from app.config import settings
 
-Respond ONLY with a valid JSON object (no markdown, no explanation outside JSON)
-in exactly this format:
-{
-  "originality_score": <integer 0-100, 100 = fully original>,
-  "risk_level": "<Low|Medium|High>",
-  "suspicious_segments": [
-    {"segment": "<short excerpt>", "reason": "<why it looks copied>"}
-  ],
-  "overall_summary": "<2-3 sentence plain-English summary>",
-  "disclaimer": "This is an AI-assisted heuristic analysis, not a certified plagiarism report. Use a database-backed tool (e.g. Turnitin, iThenticate) for academic or legal purposes."
-}
-""".strip()
+MIN_SENTENCE_LEN = 40  # shorter fragments aren't distinctive enough to check
+MAX_SENTENCES = 6  # Tavily calls per check -- quota-friendly
+SEARCH_RESULTS = 3
+SEARCH_TIMEOUT = 20
+_QUERY_MAX_LEN = 250  # quoted query truncation -- very long queries degrade
+_FINGERPRINT_LEN = 120  # chars of a sentence used as the match fingerprint
+
+_DISCLAIMER = (
+    "Web-match check: compares distinctive sentences from your text against "
+    "the public web via search. It detects verbatim copying only -- "
+    "paraphrased text, or sources outside the search index, may not be "
+    "flagged. For certified academic or legal use, use a database-backed "
+    "tool (e.g. Turnitin, iThenticate)."
+)
 
 
-def check_plagiarism(text: str) -> dict:
+def _split_sentences(text: str) -> List[str]:
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    return [p.strip() for p in parts if len(p.strip()) >= MIN_SENTENCE_LEN]
+
+
+def _pick_sentences(sentences: List[str]) -> List[str]:
+    """Longest (most distinctive) sentences first, then restore text order."""
+    ranked = sorted(enumerate(sentences), key=lambda x: len(x[1]), reverse=True)
+    picked = sorted(ranked[:MAX_SENTENCES], key=lambda x: x[0])
+    return [s for _, s in picked]
+
+
+def _normalize(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def _search_sentence(client, sentence: str) -> List[Dict]:
+    """Verbatim web search for one sentence; returns raw Tavily results."""
+    try:
+        resp = client.search(
+            query=f'"{sentence[:_QUERY_MAX_LEN]}"',
+            max_results=SEARCH_RESULTS,
+            timeout=SEARCH_TIMEOUT,
+        )
+        return resp.get("results", [])
+    except Exception as exc:  # noqa: BLE001 -- one bad search must not kill the check
+        print(f"[plagiarism] search failed: {exc}", flush=True)
+        return []
+
+
+def _find_match(sentence: str, results: List[Dict]) -> Optional[str]:
+    """URL of the first result verifiably containing the sentence, else None."""
+    fingerprint = _normalize(sentence)[:_FINGERPRINT_LEN]
+    for r in results:
+        haystack = _normalize(f"{r.get('title', '')} {r.get('content', '')}")
+        if fingerprint and fingerprint in haystack:
+            return r.get("url", "")
+    return None
+
+
+def _check_one(client, sentence: str) -> Dict:
+    results = _search_sentence(client, sentence)
+    return {"sentence": sentence, "match_url": _find_match(sentence, results)}
+
+
+def _unavailable(summary: str) -> Dict:
+    return {
+        "originality_score": None,
+        "risk_level": "Unknown",
+        "suspicious_segments": [],
+        "overall_summary": summary,
+        "disclaimer": _DISCLAIMER,
+        "method": "web-match",
+        "sentences_checked": 0,
+    }
+
+
+def check_plagiarism(text: str) -> Dict:
     """
-    Analyse *text* for plagiarism signals.
-    Returns a dict with keys: originality_score, risk_level,
-    suspicious_segments, overall_summary, disclaimer.
+    Web-match plagiarism check. Returns a dict with keys:
+    originality_score (0-100), risk_level, suspicious_segments (each with
+    segment/reason/sources), overall_summary, disclaimer, method,
+    sentences_checked. Same shape as before, so the frontend needs no changes.
     """
-    if not text.strip():
+    if not text or not text.strip():
         raise ValueError("Input text is empty.")
 
-    raw = call_llm(_SYSTEM_PROMPT, text.strip(), temperature=0.2)
+    sentences = _pick_sentences(_split_sentences(text))
+    if not sentences:
+        return _unavailable(
+            "Text too short for a web-match check -- need at least one "
+            f"sentence of {MIN_SENTENCE_LEN}+ characters."
+        )
 
-    # Strip accidental markdown fences if the model adds them
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.splitlines()
-        # drop the first and last fence lines
-        cleaned = "\n".join(
-            l for l in lines if not l.strip().startswith("```")
+    if not settings.tavily_api_key:
+        return _unavailable(
+            "Web-match plagiarism check needs a Tavily API key "
+            "(TAVILY_API_KEY), which is not configured on the server."
         )
 
     try:
-        result = json.loads(cleaned)
-    except json.JSONDecodeError:
-        # Fallback: return raw text inside the expected structure
-        result = {
-            "originality_score": None,
-            "risk_level": "Unknown",
-            "suspicious_segments": [],
-            "overall_summary": raw,
-            "disclaimer": (
-                "This is an AI-assisted heuristic analysis, not a certified "
-                "plagiarism report."
-            ),
-        }
+        from tavily import TavilyClient  # lazy: optional dependency
+    except ImportError:
+        return _unavailable(
+            "Web-match plagiarism check needs the tavily-python package, "
+            "which is not installed on the server."
+        )
 
-    return result
+    client = TavilyClient(api_key=settings.tavily_api_key)
+    with ThreadPoolExecutor(max_workers=min(6, len(sentences))) as pool:
+        checked = list(pool.map(lambda s: _check_one(client, s), sentences))
+
+    matched = [c for c in checked if c["match_url"]]
+    n = len(checked)
+    score = round(100 * (n - len(matched)) / n)
+    ratio = len(matched) / n
+    risk = "High" if ratio >= 0.5 else ("Medium" if matched else "Low")
+
+    segments = [
+        {
+            "segment": m["sentence"][:220] + "..." if len(m["sentence"]) > 220 else m["sentence"],
+            "reason": f"Found verbatim on the public web: {m['match_url']}",
+            "sources": [m["match_url"]],
+        }
+        for m in matched
+    ]
+
+    if matched:
+        summary = (
+            f"{len(matched)} of {n} checked sentences were found verbatim on "
+            f"the public web -- strong plagiarism signal. "
+            f"Originality score: {score}/100."
+        )
+    else:
+        summary = (
+            f"No verbatim web matches for any of the {n} checked distinctive "
+            f"sentences -- no plagiarism detected by web-match. "
+            f"Originality score: {score}/100."
+        )
+
+    return {
+        "originality_score": score,
+        "risk_level": risk,
+        "suspicious_segments": segments,
+        "overall_summary": summary,
+        "disclaimer": _DISCLAIMER,
+        "method": "web-match",
+        "sentences_checked": n,
+    }
