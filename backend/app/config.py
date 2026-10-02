@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.1-8b-instant"
     tavily_api_key: str = ""  # optional -- used as fallback if DDG search fails
+    semanticscholar_api_key: str = ""  # optional -- raises S2 rate limits (free key)
+    unpaywall_email: str = ""  # optional -- enables legal OA PDF lookup; skipped if unset
     max_revision_cycles: int = 1
     max_subtasks: int = 3
 

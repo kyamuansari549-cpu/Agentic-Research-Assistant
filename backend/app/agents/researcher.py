@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app.state import AgentState
 from app.tools.llm import call_llm
 from app.tools.web_search import web_search
+from app.tools.paper_search import search_papers
 from app.config import settings
 
 SYSTEM_PROMPT = """You are a research agent. You are given a sub-question and \
@@ -71,6 +72,12 @@ def researcher_node(state: AgentState) -> dict:
     subtasks = state["subtasks"]
     feedback = state.get("critic_feedback", "")
 
+    # Real-paper search runs ONCE per job on the original query (not per
+    # sub-task, and not again on REVISE loops -- results are deterministic
+    # for a given query, so re-fetching would just burn API calls).
+    papers = state.get("papers") or search_papers(state["query"], max_results=6)
+    paper_urls = [p["url"] for p in papers if p.get("url")]
+
     # Run all sub-tasks concurrently. Search calls stay throttled (via the
     # lock above) but LLM calls overlap, so total wall-clock time is close
     # to the SLOWEST single sub-task instead of the SUM of all of them.
@@ -83,5 +90,6 @@ def researcher_node(state: AgentState) -> dict:
     return {
         "subtasks": subtasks,
         "research_notes": notes,
-        "sources": list(dict.fromkeys(sources)),  # de-dupe, keep order
+        "sources": list(dict.fromkeys(paper_urls + sources)),  # de-dupe, keep order
+        "papers": papers,
     }

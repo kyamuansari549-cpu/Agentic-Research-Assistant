@@ -21,6 +21,7 @@ class AgentState(TypedDict, total=False):
     # researcher output
     research_notes: List[str]
     sources: List[str]
+    papers: List[Dict]  # real papers from paper_search (title/authors/venue/year/abstract/pdf)
 
     # coder output
     code_used: bool
