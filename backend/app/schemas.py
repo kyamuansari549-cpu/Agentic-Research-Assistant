@@ -50,6 +50,7 @@ class PlagiarismRequest(BaseModel):
 class SuspiciousSegment(BaseModel):
     segment: str
     reason: str
+    sources: List[str] = []
 
 
 class PlagiarismResponse(BaseModel):

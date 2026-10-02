@@ -305,6 +305,7 @@ def plagiarism_check(req: PlagiarismRequest, user: dict = Depends(get_current_us
         SuspiciousSegment(
             segment=s.get("segment", ""),
             reason=s.get("reason", ""),
+            sources=s.get("sources", []),
         )
         for s in result.get("suspicious_segments", [])
         if isinstance(s, dict)
