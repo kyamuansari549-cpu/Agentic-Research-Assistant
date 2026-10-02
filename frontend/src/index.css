@@ -821,55 +821,67 @@ textarea, input, select { font-family: var(--font); }
 }
 .convo-composer { margin-top: 0.25rem; }
 
-/* ─── Agent pipeline stepper ─────────────────────── */
-.agent-pipeline {
-  display: flex;
-  list-style: none;
-  width: 100%;
-  overflow: hidden;
-}
-.pipeline-step {
+/* ─── Collapsible agent activity (Claude-style) ─── */
+.activity-block { padding: 0; }
+.activity-toggle {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  flex: 1;
-  position: relative;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 1.15rem 1.2rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  border-radius: var(--r2);
+  transition: background 0.18s ease;
+}
+.activity-toggle:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.activity-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.activity-toggle-label {
   font-family: var(--mono);
-  font-size: 0.58rem;
-  letter-spacing: 0.04em;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.activity-summary {
+  flex: 1;
   min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
 }
-.pipeline-step:not(:last-child)::after {
-  content: "";
-  position: absolute;
-  top: 4px;
-  left: calc(50% + 12px);
-  right: calc(-50% + 6px);
-  height: 1px;
-  background: var(--border-2);
-}
-.pipeline-step.touched:not(:last-child)::after {
-  background: var(--dot-color);
-  opacity: 0.35;
-}
-.pipeline-dot {
-  width: 8px; height: 8px;
+.live-dot {
+  width: 7px; height: 7px;
   border-radius: 50%;
-  background: var(--border-2);
-  flex-shrink: 0; z-index: 1;
-  transition: background 0.25s;
+  background: var(--c-researcher);
+  flex-shrink: 0;
+  animation: dpulse 1.4s ease-in-out infinite;
+  --dot-color: var(--c-researcher);
 }
-.pipeline-step.touched .pipeline-dot {
-  background: var(--dot-color);
-  box-shadow: 0 0 10px 1px var(--dot-color), 0 0 3px 0 var(--dot-color);
+.activity-chevron {
+  display: inline-flex;
+  color: var(--text-3);
+  flex-shrink: 0;
+  transition: transform 0.22s ease;
+  transform: rotate(180deg);
 }
-.pipeline-step.active  .pipeline-dot { animation: dpulse 1.4s ease-in-out infinite; }
-.pipeline-step.touched .pipeline-label { color: var(--dot-color); }
-.pipeline-step.active  .pipeline-label { color: var(--text); font-weight: 700; }
-.pipeline-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 560px) { .pipeline-label { display: none; } }
+.activity-chevron.open { transform: rotate(0deg); }
+.activity-body { overflow: hidden; }
+.activity-body .timeline { padding: 0 1.2rem 1.15rem; }
 
 @keyframes dpulse {
   0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--dot-color) 55%, transparent); }

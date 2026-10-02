@@ -3,7 +3,6 @@ import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { EASE, DUR, staggerParent, riseChild, viewMotion, Rise } from "./components/motion.jsx";
 import Composer from "./components/Composer.jsx";
 import AgentTimeline from "./components/AgentTimeline.jsx";
-import AgentPipeline from "./components/AgentPipeline.jsx";
 import ReportView from "./components/ReportView.jsx";
 import HistorySidebar from "./components/HistorySidebar.jsx";
 import ToolsPanel from "./components/ToolsPanel.jsx";
@@ -169,6 +168,7 @@ export default function App() {
   const [chartPath, setChartPath] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false); // agent activity collapsed by default
   const [error, setError] = useState(null);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [activeReportId, setActiveReportId] = useState(null);
@@ -253,6 +253,7 @@ export default function App() {
     stopStream();
     setSteps([]); setReport(""); setChartPath(null);
     setError(null); setIsRunning(true); setHasStarted(true);
+    setActivityOpen(false); // activity stays minimized like Claude's
     setActiveReportId(null);
     try {
       const jobId = await startResearch(query);
@@ -473,16 +474,48 @@ export default function App() {
             <motion.div key="convo" className="convo" {...viewMotion}>
               <Rise className="convo-query-card">{query}</Rise>
 
-              {(steps.length > 0 || isRunning) && (
-                <Rise className="convo-block">
-                  <span className="eyebrow">Agent pipeline</span>
-                  <AgentPipeline steps={steps} isRunning={isRunning} />
-                </Rise>
-              )}
-
-              <Rise className="convo-block" delay={0.05}>
-                <span className="eyebrow">Agent activity</span>
-                <AgentTimeline steps={steps} isRunning={isRunning} />
+              <Rise className="convo-block activity-block" delay={0.05}>
+                <button
+                  type="button"
+                  className="activity-toggle"
+                  onClick={() => setActivityOpen((o) => !o)}
+                  aria-expanded={activityOpen}
+                  aria-label={activityOpen ? "Collapse agent activity" : "Expand agent activity"}
+                >
+                  <span className="activity-toggle-label">Agent activity</span>
+                  <span className="activity-summary">
+                    {steps.length === 0 ? (
+                      isRunning ? "Starting…" : "No activity yet"
+                    ) : isRunning ? (
+                      <>
+                        <span className="live-dot" aria-hidden="true" />
+                        {steps[steps.length - 1].message}
+                      </>
+                    ) : (
+                      `${steps.length} step${steps.length === 1 ? "" : "s"}`
+                    )}
+                  </span>
+                  <span
+                    className={`activity-chevron${activityOpen ? " open" : ""}`}
+                    aria-hidden="true"
+                  >
+                    <ChevronUpIcon />
+                  </span>
+                </button>
+                <AnimatePresence initial={false}>
+                  {activityOpen && (
+                    <motion.div
+                      key="activity-body"
+                      className="activity-body"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: EASE }}
+                    >
+                      <AgentTimeline steps={steps} isRunning={isRunning} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </Rise>
 
               <Rise className="convo-block" delay={0.1}>
