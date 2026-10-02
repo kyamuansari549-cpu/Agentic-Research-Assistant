@@ -2,10 +2,11 @@
 Plagiarism check tool -- web-match based (real detection).
 
 How it works: the input is split into sentences and the most
-distinctive ones are searched on the public web via Tavily -- first as an
-exact phrase, then (if that finds nothing) as a semantic query, because the
-search index can be stale. Candidate pages are verified by fetching their
-live text and checking for the sentence verbatim: a sentence that appears
+distinctive ones go through three discovery tiers -- (1) Tavily exact-phrase
+search, (2) Wikipedia's own live full-text search (free, always current;
+Wikipedia is the most-copied source on the web), (3) Tavily semantic search
+as a final fallback. Candidate pages are verified by fetching their live
+text and checking for the sentence verbatim: a sentence that appears
 word-for-word on a webpage is hard evidence of copying -- grounded in the
 actual input text, so different inputs give different results (unlike a
 pure LLM guess, which has no corpus to compare against and returns
@@ -19,6 +20,7 @@ import html
 import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -31,6 +33,8 @@ _QUERY_MAX_LEN = 250  # quoted query truncation -- very long queries degrade
 _FINGERPRINT_LEN = 120  # chars of a sentence used as the match fingerprint
 _FETCH_TIMEOUT = 10  # seconds per page fetch
 _FETCH_MAX_BYTES = 800_000  # don't download huge pages
+_WIKI_API = "https://en.wikipedia.org/w/api.php"
+_WIKI_UA = "Mozilla/5.0 (compatible; ResearchAssistant/1.0; plagiarism-check)"
 
 _DISCLAIMER = (
     "Web-match check: compares distinctive sentences from your text against "
@@ -157,15 +161,59 @@ def _verify_against_pages(sentence: str, results: List[Dict], limit: int = 2) ->
     return None
 
 
+def _search_wikipedia(sentence: str) -> List[Dict]:
+    """Wikipedia full-text search over LIVE content (no index staleness).
+
+    Wikipedia is the most-copied source on the web, and its own search API
+    queries current article text -- unlike third-party indexes that may lag
+    recent edits by days. Free, no API key needed.
+    """
+    clean = re.sub(r"\[\d+\]", "", sentence).strip()
+    chunk = " ".join(clean.split()[:20])  # ~20-word quoted phrase
+    if len(chunk) < 40:
+        return []
+    try:
+        resp = httpx.get(
+            _WIKI_API,
+            params={
+                "action": "query",
+                "list": "search",
+                "srsearch": f'"{chunk}"',
+                "srlimit": 3,
+                "format": "json",
+            },
+            timeout=_FETCH_TIMEOUT,
+            headers={"User-Agent": _WIKI_UA},
+        )
+        out = []
+        for r in resp.json().get("query", {}).get("search", []):
+            title = r.get("title", "")
+            if title:
+                url = "https://en.wikipedia.org/wiki/" + quote(title.replace(" ", "_"), safe="")
+                out.append({"url": url, "title": title})
+    except Exception as exc:  # noqa: BLE001 -- never let this kill the check
+        print(f"[plagiarism] wikipedia search failed: {exc}", flush=True)
+        return []
+    print(
+        f"[plagiarism] search (wikipedia) {chunk[:50]!r}... -> {[o['url'] for o in out]}",
+        flush=True,
+    )
+    return out
+
+
 def _check_one(client, sentence: str) -> Dict:
-    # Tier 1: exact-phrase search -- precise when the index has the text.
+    # Tier 1: Tavily exact-phrase search -- precise when the index has the text.
     results = _search_sentence(client, sentence, exact=True)
     url = _find_match(sentence, results) or _verify_against_pages(sentence, results)
     if url:
         return {"sentence": sentence, "match_url": url}
-    # Tier 2: semantic fallback -- the index may be stale or the phrase too
-    # long for exact matching. We verify against the LIVE page text, so a
-    # freshly-added source page still gets caught.
+    # Tier 2: Wikipedia's own live search -- free, always current, and
+    # Wikipedia is the most-copied source for this kind of check.
+    results = _search_wikipedia(sentence)
+    url = _verify_against_pages(sentence, results)
+    if url:
+        return {"sentence": sentence, "match_url": url}
+    # Tier 3: Tavily semantic fallback -- topical pages, verified live.
     results = _search_sentence(client, sentence, exact=False)
     url = _verify_against_pages(sentence, results)
     return {"sentence": sentence, "match_url": url}
