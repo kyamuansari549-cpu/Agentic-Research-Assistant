@@ -47,7 +47,7 @@ def _format_papers(papers: list) -> str:
         year = p.get("year") or "n.d."
         venue = p.get("venue") or "Unknown venue"
         cites = p.get("citations") or 0
-        abstract = (p.get("abstract") or "")[:900]
+        abstract = (p.get("abstract") or "")[:600]
         lines = [
             f"[{i}] Title: {title}",
             f"    Authors: {authors}",

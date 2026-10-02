@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""  # optional -- used as fallback if DDG search fails
     semanticscholar_api_key: str = ""  # optional -- raises S2 rate limits (free key)
     unpaywall_email: str = ""  # optional -- enables legal OA PDF lookup; skipped if unset
+    enable_paper_relevance_filter: bool = True  # LLM gate for off-topic papers; disable for ~3-5s faster jobs
     max_revision_cycles: int = 1
     max_subtasks: int = 3
 

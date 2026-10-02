@@ -27,15 +27,16 @@ instead of raising, so the research pipeline keeps working even when
 a scholarly API is down or rate-limited.
 """
 import re
+import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 import httpx
 
 from app.config import settings
 
-TIMEOUT_SECONDS = 15
+TIMEOUT_SECONDS = 8  # scholarly APIs answer in 1-3s normally; don't hang on a slow one
 S2_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 S2_FIELDS = "title,abstract,authors,venue,year,citationCount,url,openAccessPdf,externalIds"
 ARXIV_URL = "https://export.arxiv.org/api/query"
@@ -43,6 +44,26 @@ OPENALEX_URL = "https://api.openalex.org/works"
 UNPAYWALL_URL = "https://api.unpaywall.org/v2"
 
 ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom"}
+
+# In-memory cache: same query asked twice (common when re-running /
+# demoing) returns instantly instead of re-hitting 3 APIs + Unpaywall.
+_paper_cache: Dict[Tuple[str, int], Tuple[float, List[Dict]]] = {}
+PAPER_CACHE_TTL_SECONDS = 3600
+PAPER_CACHE_MAX_ENTRIES = 200
+
+
+def _cache_get(query: str, max_results: int) -> Optional[List[Dict]]:
+    hit = _paper_cache.get((_norm_title(query), max_results))
+    if hit and time.time() - hit[0] < PAPER_CACHE_TTL_SECONDS:
+        print(f"[paper_search] cache hit for {query!r}", flush=True)
+        return hit[1]
+    return None
+
+
+def _cache_put(query: str, max_results: int, papers: List[Dict]) -> None:
+    if len(_paper_cache) >= PAPER_CACHE_MAX_ENTRIES:
+        _paper_cache.clear()
+    _paper_cache[(_norm_title(query), max_results)] = (time.time(), papers)
 
 
 def _norm_title(title: str) -> str:
@@ -340,6 +361,10 @@ def search_papers(query: str, max_results: int = 6) -> List[Dict]:
     arXiv, or Unpaywall). Paywalled papers return metadata + abstract
     with pdf_url=None.
     """
+    cached = _cache_get(query, max_results)
+    if cached is not None:
+        return cached
+
     fetch_n = max(max_results, 8)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -379,4 +404,6 @@ def search_papers(query: str, max_results: int = 6) -> List[Dict]:
         f"({sum(1 for p in papers if p.get('pdf_url'))} with PDF)",
         flush=True,
     )
-    return papers[:max_results]
+    result = papers[:max_results]
+    _cache_put(query, max_results, result)
+    return result

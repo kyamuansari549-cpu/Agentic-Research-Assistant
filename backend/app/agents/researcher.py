@@ -68,6 +68,14 @@ def _research_one(task: dict, feedback: str) -> dict:
     }
 
 
+def _fetch_and_filter_papers(query: str) -> list:
+    """Paper search + relevance gate as one unit (runs on a worker thread)."""
+    papers = search_papers(query, max_results=10)
+    if settings.enable_paper_relevance_filter:
+        papers = filter_relevant_papers(query, papers, max_keep=6)
+    return papers[:6]
+
+
 def researcher_node(state: AgentState) -> dict:
     subtasks = state["subtasks"]
     feedback = state.get("critic_feedback", "")
@@ -78,16 +86,26 @@ def researcher_node(state: AgentState) -> dict:
     # The relevance gate drops API-ranking misses (e.g. a paper that only
     # matched a stray year in its title) before the Writer ever sees them.
     papers = state.get("papers")
-    if not papers:
-        papers = search_papers(state["query"], max_results=10)
-        papers = filter_relevant_papers(state["query"], papers, max_keep=6)
-    paper_urls = [p["url"] for p in papers if p.get("url")]
+    paper_future = None
 
     # Run all sub-tasks concurrently. Search calls stay throttled (via the
     # lock above) but LLM calls overlap, so total wall-clock time is close
     # to the SLOWEST single sub-task instead of the SUM of all of them.
-    with ThreadPoolExecutor(max_workers=min(5, len(subtasks) or 1)) as pool:
+    # Paper search rides on its own worker thread in the SAME pool, so it
+    # overlaps with sub-task research instead of blocking before it --
+    # this alone saves ~5-10s wall time per job.
+    max_workers = min(6, (len(subtasks) or 1) + 1)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        if not papers:
+            paper_future = pool.submit(_fetch_and_filter_papers, state["query"])
         results = list(pool.map(lambda t: _research_one(t, feedback), subtasks))
+        if paper_future is not None:
+            try:
+                papers = paper_future.result()
+            except Exception as exc:  # noqa: BLE001 -- never break research
+                print(f"[researcher] paper search failed: {exc}", flush=True)
+                papers = []
+    paper_urls = [p["url"] for p in papers if p.get("url")]
 
     notes = [r["note"] for r in results]
     sources = [href for r in results for href in r["sources"]]
