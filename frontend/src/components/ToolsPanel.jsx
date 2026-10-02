@@ -454,24 +454,20 @@ function ResearchGaps() {
 // ─── Tool metadata ─────────────────────────────────────────────────
 
 const TOOLS = {
-  paraphrase: { title: "Paraphrase",      desc: "Rewrite text in a different style",               Component: Paraphrase },
-  plagiarism: { title: "Plagiarism Check", desc: "Detect copied or suspicious content",             Component: Plagiarism },
-  "ai-detect":{ title: "AI Detection",    desc: "Score the likelihood of AI-generated content",    Component: AIDetect   },
-  "pdf-chat": { title: "PDF Chat",         desc: "Upload a PDF and ask questions about it",         Component: PDFChat    },
-  summarize:  { title: "Summarize",        desc: "Condense text to key points",                     Component: Summarize  },
-  gaps:       { title: "Research Gaps",    desc: "Find gaps and future directions in a paper",      Component: ResearchGaps },
+  paraphrase: { Component: Paraphrase },
+  plagiarism: { Component: Plagiarism },
+  "ai-detect":{ Component: AIDetect   },
+  "pdf-chat": { Component: PDFChat    },
+  summarize:  { Component: Summarize  },
+  gaps:       { Component: ResearchGaps },
 };
 
 export default function ToolsPanel({ activeTool, setActiveTool }) {
   const tool = TOOLS[activeTool] || TOOLS["paraphrase"];
-  const { title, desc, Component } = tool;
+  const { Component } = tool;
 
   return (
     <div className="tool-page-inner">
-      <div className="tool-page-header">
-        <h1 className="page-title">{title}</h1>
-        <p className="page-subtitle">{desc}</p>
-      </div>
       <div className="tool-page-body">
         <Component />
       </div>
