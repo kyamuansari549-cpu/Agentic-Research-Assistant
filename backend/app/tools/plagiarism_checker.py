@@ -2,11 +2,14 @@
 Plagiarism check tool -- web-match based (real detection).
 
 How it works: the input is split into sentences and the most
-distinctive ones are searched verbatim on the public web via Tavily.
-A sentence that appears word-for-word on a webpage is hard evidence
-of copying -- grounded in the actual input text, so different inputs
-give different results (unlike a pure LLM guess, which has no corpus
-to compare against and returns similar-looking scores for everything).
+distinctive ones are searched on the public web via Tavily -- first as an
+exact phrase, then (if that finds nothing) as a semantic query, because the
+search index can be stale. Candidate pages are verified by fetching their
+live text and checking for the sentence verbatim: a sentence that appears
+word-for-word on a webpage is hard evidence of copying -- grounded in the
+actual input text, so different inputs give different results (unlike a
+pure LLM guess, which has no corpus to compare against and returns
+similar-looking scores for everything).
 
 Limits (stated honestly in the disclaimer): this finds VERBATIM copies
 on the indexed web only. Paraphrased copying, or sources outside the
@@ -71,27 +74,26 @@ def _normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
-def _search_sentence(client, sentence: str) -> List[Dict]:
-    """Verbatim web search for one sentence; returns raw Tavily results."""
+def _search_sentence(client, sentence: str, exact: bool) -> List[Dict]:
+    """Web search for one sentence; returns raw Tavily results.
+
+    exact=True: quoted phrase + exact_match flag -- only pages containing
+    the phrase verbatim. exact=False: semantic fallback for when the index
+    is stale or the phrase is too long for exact matching.
+    """
     # Strip citation markers ([111]) -- they're noise for the search engine.
-    clean = re.sub(r"\[\d+\]", "", sentence).strip()
-    query = f'"{clean[:_QUERY_MAX_LEN]}"'
+    clean = re.sub(r"\[\d+\]", "", sentence).strip()[:_QUERY_MAX_LEN]
+    query = f'"{clean}"' if exact else clean
     try:
-        # exact_match=True: Tavily returns ONLY results containing the quoted
-        # phrase verbatim (quotes alone don't guarantee this -- without the
-        # flag Tavily falls back to semantic search and may miss the source).
-        resp = client.search(
-            query=query,
-            max_results=SEARCH_RESULTS,
-            exact_match=True,
-        )
+        kwargs = {"exact_match": True} if exact else {}
+        resp = client.search(query=query, max_results=SEARCH_RESULTS, **kwargs)
         results = resp.get("results", [])
     except Exception as exc:  # noqa: BLE001 -- one bad search must not kill the check
         print(f"[plagiarism] search failed: {exc}", flush=True)
         return []
     print(
-        f"[plagiarism] search {clean[:50]!r}... -> {len(results)} results: "
-        f"{[r.get('url') for r in results]}",
+        f"[plagiarism] search ({'exact' if exact else 'semantic'}) {clean[:50]!r}... "
+        f"-> {len(results)} results: {[r.get('url') for r in results]}",
         flush=True,
     )
     return results
@@ -136,24 +138,37 @@ def _fetch_page_text(url: str) -> str:
     return html.unescape(re.sub(r"\s+", " ", text)).strip()
 
 
-def _check_one(client, sentence: str) -> Dict:
-    results = _search_sentence(client, sentence)
-    url = _find_match(sentence, results)
-    if url:
-        return {"sentence": sentence, "match_url": url}
-    # Search snippets are short windows into long pages -- a miss there
-    # doesn't mean the sentence isn't on the page. Verify against the
-    # full text of the top results (free: plain HTTP fetch, no API cost).
+def _verify_against_pages(sentence: str, results: List[Dict], limit: int = 2) -> Optional[str]:
+    """Fetch top result pages and check the live text for the sentence.
+
+    Search snippets are short windows into long pages -- a miss there doesn't
+    mean the sentence isn't on the page. The live page is current, so this
+    also catches text the search index hasn't picked up yet.
+    """
     fingerprint = _normalize(sentence)[:_FINGERPRINT_LEN]
-    for r in results[:2]:
+    for r in results[:limit]:
         page_url = r.get("url", "")
         if not page_url:
             continue
         page_text = _fetch_page_text(page_url)
         if page_text and fingerprint in _normalize(page_text):
             print(f"[plagiarism] full-page match: {page_url}", flush=True)
-            return {"sentence": sentence, "match_url": page_url}
-    return {"sentence": sentence, "match_url": None}
+            return page_url
+    return None
+
+
+def _check_one(client, sentence: str) -> Dict:
+    # Tier 1: exact-phrase search -- precise when the index has the text.
+    results = _search_sentence(client, sentence, exact=True)
+    url = _find_match(sentence, results) or _verify_against_pages(sentence, results)
+    if url:
+        return {"sentence": sentence, "match_url": url}
+    # Tier 2: semantic fallback -- the index may be stale or the phrase too
+    # long for exact matching. We verify against the LIVE page text, so a
+    # freshly-added source page still gets caught.
+    results = _search_sentence(client, sentence, exact=False)
+    url = _verify_against_pages(sentence, results)
+    return {"sentence": sentence, "match_url": url}
 
 
 def _unavailable(summary: str) -> Dict:
