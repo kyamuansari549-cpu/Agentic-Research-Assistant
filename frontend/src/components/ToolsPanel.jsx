@@ -148,6 +148,15 @@ function Plagiarism() {
                 <div key={i} className="segment-item">
                   <p className="segment-quote">"{s.segment}"</p>
                   <p className="segment-reason">{s.reason}</p>
+                  {s.sources?.length > 0 && (
+                    <p className="segment-sources">
+                      {s.sources.map((u, j) => (
+                        <a key={j} href={u} target="_blank" rel="noopener noreferrer">
+                          {(() => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } })()}
+                        </a>
+                      ))}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

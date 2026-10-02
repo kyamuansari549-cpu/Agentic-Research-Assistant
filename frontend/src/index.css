@@ -1437,6 +1437,13 @@ textarea, input, select { font-family: var(--font); }
   color: var(--text-2); margin-bottom: 0.2rem;
 }
 .segment-reason { font-size: 0.84rem; color: var(--text-3); line-height: 1.5; }
+.segment-sources { margin-top: 0.25rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.segment-sources a {
+  font-size: 0.8rem; color: var(--accent); text-decoration: none;
+  border: 1px solid var(--border); border-radius: 999px; padding: 0.15rem 0.6rem;
+  transition: background 0.15s ease;
+}
+.segment-sources a:hover { background: var(--accent-soft, rgba(91,181,165,0.12)); text-decoration: underline; }
 .disclaimer {
   font-size: 0.76rem; color: var(--text-3); font-style: italic;
   border-top: 1px solid var(--border); padding-top: 0.6rem; line-height: 1.5;

@@ -275,7 +275,7 @@ def check_plagiarism(text: str) -> Dict:
     segments = [
         {
             "segment": m["sentence"][:220] + "..." if len(m["sentence"]) > 220 else m["sentence"],
-            "reason": f"Found verbatim on the public web: {m['match_url']}",
+            "reason": "Found verbatim on the public web:",
             "sources": [m["match_url"]],
         }
         for m in matched
