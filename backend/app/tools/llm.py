@@ -1,16 +1,12 @@
 """
-LLM access for every agent: Groq is the primary provider, with an
-automatic failover to Gemini when Groq rate-limits (HTTP 429).
+LLM access for every agent: Groq is the primary provider, with Gemini as
+the fallback. Transient provider errors (HTTP 429 rate-limit, 503
+overload) are retried in a round-robin across the configured providers
+with growing backoff, so a single busy provider never kills an agent
+step -- the call simply moves to whichever provider can serve it.
 
-Why failover instead of just retrying Groq? Waiting out Groq's limits
-with exponential backoff costs 2+4+8+16+32 = 62s of pure waiting.
-Failing over to a second provider turns that dead wait into one extra
-API call, so the failed agent step resumes from where it stopped
-instead of stalling the whole pipeline.
-
-Failover is per call, not sticky: the NEXT call always tries Groq
-first again. Only the failed call is retried on Gemini, so completed
-pipeline stages are never redone.
+Without a GOOGLE_API_KEY configured, the round-robin degrades to
+Groq-only retries (same resilience, one provider).
 """
 import time
 
@@ -29,39 +25,42 @@ GEMINI_URL_TEMPLATE = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 
+# Transient HTTP statuses: safe to retry, possibly on the other provider.
+_TRANSIENT_CODES = (429, 503)
 
-def _call_groq(
-    system_prompt: str, user_prompt: str, temperature: float, delays: list
-) -> str:
-    """One Groq chat completion; on 429 retries, sleeping `delays` between tries."""
-    last_exc: RateLimitError | None = None
-    for attempt in range(len(delays) + 1):
-        try:
-            response = _groq_client.chat.completions.create(
-                model=settings.groq_model,
-                temperature=temperature,
-                tool_choice="none",  # force plain text (no tool-calling)
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            return response.choices[0].message.content.strip()
-        except RateLimitError as exc:
-            last_exc = exc
-            if attempt < len(delays):
-                wait = delays[attempt]
-                print(
-                    f"[llm] Groq 429, waiting {wait}s... "
-                    f"({attempt + 1}/{len(delays) + 1})",
-                    flush=True,
-                )
-                time.sleep(wait)
-    raise last_exc  # all attempts rate-limited
+# Waits (seconds) before attempts 2..6. Total patience ~= 67s + API time,
+# comfortably under the 150s per-node ceiling in main.py.
+_RETRY_DELAYS = [2, 5, 10, 20, 30]
 
 
-def _call_gemini(system_prompt: str, user_prompt: str, temperature: float) -> str:
-    """Same (system + user) prompt via Gemini's generateContent REST API."""
+class _TransientLLMError(Exception):
+    """A 429/503 from an LLM provider -- retryable, maybe on the other one."""
+
+    def __init__(self, provider: str, code: int, detail: str = ""):
+        super().__init__(f"{provider} HTTP {code}: {detail[:120]}")
+        self.provider = provider
+        self.code = code
+
+
+def _call_groq_once(system_prompt: str, user_prompt: str, temperature: float) -> str:
+    """Single Groq attempt. 429 -> _TransientLLMError; anything else raises as-is."""
+    try:
+        response = _groq_client.chat.completions.create(
+            model=settings.groq_model,
+            temperature=temperature,
+            tool_choice="none",  # force plain text (no tool-calling)
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        return response.choices[0].message.content.strip()
+    except RateLimitError as exc:
+        raise _TransientLLMError("groq", 429, str(exc)) from exc
+
+
+def _call_gemini_once(system_prompt: str, user_prompt: str, temperature: float) -> str:
+    """Single Gemini attempt via generateContent REST. 429/503 -> transient."""
     url = GEMINI_URL_TEMPLATE.format(model=settings.gemini_model)
     headers = {"x-goog-api-key": settings.google_api_key}
     body = {
@@ -69,25 +68,22 @@ def _call_gemini(system_prompt: str, user_prompt: str, temperature: float) -> st
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
         "generationConfig": {"temperature": temperature},
     }
-    for attempt in range(2):
-        resp = httpx.post(url, headers=headers, json=body, timeout=30.0)
-        if resp.status_code == 429 and attempt == 0:
-            print("[llm] Gemini also 429, one retry...", flush=True)
-            time.sleep(3)
-            continue
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"Gemini fallback failed (HTTP {resp.status_code}): "
-                f"{resp.text[:400]}"
-            )
-        try:
-            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError, ValueError) as exc:
-            raise RuntimeError(
-                f"Gemini returned an unexpected response: {resp.text[:400]}"
-            ) from exc
-        return text.strip()
-    raise RuntimeError("Gemini fallback rate-limited after retry.")
+    resp = httpx.post(url, headers=headers, json=body, timeout=30.0)
+    if resp.status_code in _TRANSIENT_CODES:
+        raise _TransientLLMError("gemini", resp.status_code, resp.text)
+    if resp.status_code != 200:
+        # Non-transient (bad key, retired model, bad request): fail fast so
+        # the real cause surfaces instead of being retried blindly.
+        raise RuntimeError(
+            f"Gemini request failed (HTTP {resp.status_code}): {resp.text[:400]}"
+        )
+    try:
+        text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, ValueError) as exc:
+        raise RuntimeError(
+            f"Gemini returned an unexpected response: {resp.text[:400]}"
+        ) from exc
+    return text.strip()
 
 
 def _fallback_ready() -> bool:
@@ -97,10 +93,9 @@ def _fallback_ready() -> bool:
 def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.3) -> str:
     """
     Sends a single-turn (system + user) chat completion and returns plain
-    text. Groq first (one quick 2s retry for transient blips); if Groq is
-    truly rate-limited the SAME call fails over to Gemini instead of
-    waiting ~60s. Without a GOOGLE_API_KEY configured, keeps the legacy
-    Groq-only exponential backoff so nothing breaks.
+    text. Tries Groq first, then round-robins across the available
+    providers (Groq, Gemini) on transient 429/503 errors with growing
+    backoff. Gives up only after every provider has been tried repeatedly.
     """
     if _groq_client is None:
         raise RuntimeError(
@@ -108,20 +103,31 @@ def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.3) -> 
             "and add your key from https://console.groq.com"
         )
 
-    try:
-        return _call_groq(system_prompt, user_prompt, temperature, delays=[2])
-    except RateLimitError:
-        if not _fallback_ready():
-            # Legacy path: no fallback configured, wait Groq out.
-            try:
-                return _call_groq(
-                    system_prompt, user_prompt, temperature,
-                    delays=[2, 4, 8, 16, 32],
-                )
-            except RateLimitError as exc:
-                raise RuntimeError(
-                    "Groq rate limit hit after all retries. "
-                    "Try a different model or upgrade your plan."
-                ) from exc
-        print("[llm] Groq rate-limited, failing over to Gemini...", flush=True)
-        return _call_gemini(system_prompt, user_prompt, temperature)
+    providers = ["groq"] + (["gemini"] if _fallback_ready() else [])
+    last_exc: Exception | None = None
+
+    for attempt in range(len(_RETRY_DELAYS) + 1):
+        if attempt:
+            wait = _RETRY_DELAYS[attempt - 1]
+            print(
+                f"[llm] waiting {wait}s before retry "
+                f"{attempt + 1}/{len(_RETRY_DELAYS) + 1}...",
+                flush=True,
+            )
+            time.sleep(wait)
+        provider = providers[attempt % len(providers)]
+        try:
+            if provider == "groq":
+                return _call_groq_once(system_prompt, user_prompt, temperature)
+            return _call_gemini_once(system_prompt, user_prompt, temperature)
+        except _TransientLLMError as exc:
+            last_exc = exc
+            nxt = providers[(attempt + 1) % len(providers)]
+            print(f"[llm] {provider} busy (HTTP {exc.code})", flush=True)
+            if nxt != provider and attempt < len(_RETRY_DELAYS):
+                print(f"[llm] switching to {nxt}...", flush=True)
+
+    raise RuntimeError(
+        f"LLM providers unavailable after {len(_RETRY_DELAYS) + 1} attempts: "
+        f"{last_exc}"
+    ) from last_exc
