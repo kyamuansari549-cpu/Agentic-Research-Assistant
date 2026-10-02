@@ -7,7 +7,7 @@ follow-up questions.
 import io
 import time
 import uuid
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 # In-memory store: {session_id: {"filename": str, "text": str,
 #                                "user_id": str, "created_at": float}}

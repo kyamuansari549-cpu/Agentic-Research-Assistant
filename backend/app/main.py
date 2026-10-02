@@ -37,6 +37,7 @@ from app.schemas import (
 )
 from app.graph import research_graph
 from app.config import settings
+from app.rate_limit import limit_user
 from app import db
 from app.auth import (
     router as auth_router,
@@ -75,6 +76,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    """Baseline hardening headers for every API response."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
+# ── Input size guards ─────────────────────────────────────────────────────────
+# Text tools call paid metered APIs (LLM, Tavily). Without caps, one huge
+# request can burn quota or exhaust memory. 413, not silent truncation, so
+# the caller knows exactly what happened.
+MAX_QUERY_CHARS = 500       # research question
+MAX_TEXT_CHARS = 20000      # paraphrase / summarize / plagiarism / ai-detect / gaps
+MAX_QUESTION_CHARS = 2000   # pdf-chat question
+
+
+def _limit_text(value: str, max_chars: int, field: str) -> str:
+    if len(value) > max_chars:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{field} too long: {len(value)} chars (max {max_chars}).",
+        )
+    return value
+
 # ── Self-ping: keeps Render free-tier from spinning down ──────────────────────
 # Render shuts down a free service after 15 min of inactivity.
 # This background task pings our own /api/health every 10 minutes so the
@@ -104,6 +133,20 @@ async def start_keep_alive():
         asyncio.create_task(_self_ping_loop())
         print("[keep-alive] background ping started", flush=True)
 
+
+@app.on_event("startup")
+async def warn_default_jwt_secret():
+    """Loud warning if the JWT signing secret was never configured.
+
+    The default is public (it's in the repo), so anyone could forge tokens.
+    Render env has JWT_SECRET set -- this fires only for misconfigured deploys.
+    """
+    if settings.jwt_secret == "dev-secret-change-me":
+        print(
+            "[security] WARNING: using default JWT secret -- set JWT_SECRET env var!",
+            flush=True,
+        )
+
 app.include_router(auth_router)
 
 # In-memory job store -- fine for a portfolio/demo project.
@@ -125,6 +168,9 @@ NODE_MESSAGES = {
 def start_research(req: ResearchRequest, user: dict = Depends(get_current_user)):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
+    _limit_text(req.query, MAX_QUERY_CHARS, "Query")
+    # Research is the most expensive endpoint (LLM + search APIs per job).
+    limit_user(user["id"], "research", max_requests=10)
     job_id = uuid.uuid4().hex[:12]
     _jobs[job_id] = {"query": req.query, "user_id": user["id"]}
     return ResearchJobResponse(job_id=job_id)
@@ -271,6 +317,8 @@ def health():
 @app.post("/api/paraphrase", response_model=ParaphraseResponse)
 def paraphrase_text(req: ParaphraseRequest, user: dict = Depends(get_current_user)):
     """Rewrite text in the requested style (academic | casual | concise)."""
+    _limit_text(req.text, MAX_TEXT_CHARS, "Text")
+    limit_user(user["id"], "paraphrase", max_requests=60)
     valid_styles = {"academic", "casual", "concise"}
     style = req.style.lower() if req.style else "academic"
     if style not in valid_styles:
@@ -294,6 +342,8 @@ def paraphrase_text(req: ParaphraseRequest, user: dict = Depends(get_current_use
 @app.post("/api/plagiarism-check", response_model=PlagiarismResponse)
 def plagiarism_check(req: PlagiarismRequest, user: dict = Depends(get_current_user)):
     """Heuristic plagiarism analysis using the LLM."""
+    _limit_text(req.text, MAX_TEXT_CHARS, "Text")
+    limit_user(user["id"], "plagiarism", max_requests=30)
     try:
         result = check_plagiarism(req.text)
     except ValueError as e:
@@ -327,6 +377,8 @@ def plagiarism_check(req: PlagiarismRequest, user: dict = Depends(get_current_us
 @app.post("/api/ai-detect", response_model=AIDetectResponse)
 def ai_detect(req: AIDetectRequest, user: dict = Depends(get_current_user)):
     """Score how likely the text was AI-generated."""
+    _limit_text(req.text, MAX_TEXT_CHARS, "Text")
+    limit_user(user["id"], "ai-detect", max_requests=60)
     try:
         result = detect_ai_content(req.text)
     except ValueError as e:
@@ -366,6 +418,7 @@ async def pdf_upload(
     chat questions.  The file must be a valid PDF (content-type check is
     advisory; text extraction failure is the real guard).
     """
+    limit_user(user["id"], "pdf-upload", max_requests=20)
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
@@ -397,6 +450,8 @@ async def pdf_upload(
 @app.post("/api/pdf-chat", response_model=PDFChatResponse)
 def pdf_chat(req: PDFChatRequest, user: dict = Depends(get_current_user)):
     """Ask a question about a previously uploaded PDF."""
+    _limit_text(req.question, MAX_QUESTION_CHARS, "Question")
+    limit_user(user["id"], "pdf-chat", max_requests=30)
     session = get_pdf_session(req.session_id, user["id"])
     if not session:
         raise HTTPException(
@@ -435,6 +490,8 @@ def pdf_session_delete(session_id: str, user: dict = Depends(get_current_user)):
 @app.post("/api/summarize", response_model=SummarizeResponse)
 def summarize_text(req: SummarizeRequest, user: dict = Depends(get_current_user)):
     """Summarize text in brief (3-5 sentences) or detailed (structured) mode."""
+    _limit_text(req.text, MAX_TEXT_CHARS, "Text")
+    limit_user(user["id"], "summarize", max_requests=60)
     mode = req.mode.lower() if req.mode else "brief"
     if mode not in {"brief", "detailed"}:
         raise HTTPException(
@@ -463,6 +520,8 @@ def summarize_text(req: SummarizeRequest, user: dict = Depends(get_current_user)
 @app.post("/api/research-gaps", response_model=ResearchGapResponse)
 def research_gaps(req: ResearchGapRequest, user: dict = Depends(get_current_user)):
     """Identify research gaps, limitations, and future directions in a paper."""
+    _limit_text(req.text, MAX_TEXT_CHARS, "Text")
+    limit_user(user["id"], "research-gaps", max_requests=30)
     try:
         result = find_research_gaps(req.text)
     except ValueError as e:

@@ -28,6 +28,19 @@ from pathlib import Path
 from typing import Tuple, Optional
 
 TIMEOUT_SECONDS = 15
+# Hardening for LLM-generated code: kill runaway CPU/memory, cap output.
+# (POSIX only -- Windows has no resource module; timeout still applies.)
+MAX_CPU_SECONDS = 10
+MAX_MEMORY_BYTES = 512 * 1024 * 1024  # 512 MB
+MAX_OUTPUT_CHARS = 50000
+
+
+def _limit_child_resources() -> None:
+    """preexec_fn: clamp CPU and address space of the child process."""
+    import resource
+
+    resource.setrlimit(resource.RLIMIT_CPU, (MAX_CPU_SECONDS, MAX_CPU_SECONDS))
+    resource.setrlimit(resource.RLIMIT_AS, (MAX_MEMORY_BYTES, MAX_MEMORY_BYTES))
 
 
 def run_python_code(code: str) -> Tuple[str, Optional[str]]:
@@ -70,6 +83,7 @@ def run_python_code(code: str) -> Tuple[str, Optional[str]]:
                 errors="replace",
                 timeout=TIMEOUT_SECONDS,
                 env=child_env,
+                preexec_fn=_limit_child_resources if os.name == "posix" else None,
             )
         except subprocess.TimeoutExpired:
             return f"Execution timed out after {TIMEOUT_SECONDS}s.", None
@@ -77,6 +91,9 @@ def run_python_code(code: str) -> Tuple[str, Optional[str]]:
         output = result.stdout
         if result.returncode != 0:
             output += "\n" + result.stderr
+        if len(output) > MAX_OUTPUT_CHARS:
+            # A script printing megabytes would blow up memory / the DB row.
+            output = output[:MAX_OUTPUT_CHARS] + "\n...[output truncated]"
 
         chart_data_uri = None
         generated_chart = Path(tmpdir) / "chart.png"
