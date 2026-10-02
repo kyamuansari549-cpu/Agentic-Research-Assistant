@@ -75,7 +75,14 @@ def _normalize(s: str) -> str:
     # Drop citation markers like [111] -- they render differently in HTML
     # (<sup> tags) than in copied plain text, and shouldn't break a match.
     s = re.sub(r"\[\d+\]", "", s)
-    return re.sub(r"\s+", " ", s).strip().lower()
+    # Unify curly quotes with straight ones.
+    s = s.replace("\u2019", "'").replace("\u2018", "'").replace("\u201c", '"').replace("\u201d", '"')
+    s = re.sub(r"\s+", " ", s).strip().lower()
+    # HTML tag-stripping leaves stray spaces around punctuation
+    # ("Sun</a>'s" -> "sun 's", "heat</a>," -> "heat ,"); glue them back.
+    s = re.sub(r"\s+([.,;:!?'\")\]])", r"\1", s)
+    s = re.sub(r"([(\[])\s+", r"\1", s)
+    return s
 
 
 def _search_sentence(client, sentence: str, exact: bool) -> List[Dict]:
