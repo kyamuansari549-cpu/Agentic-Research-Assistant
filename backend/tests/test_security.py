@@ -2,11 +2,13 @@
 import pytest
 from fastapi import HTTPException
 
-from app.rate_limit import check_rate_limit, _windows
+from app.rate_limit import check_rate_limit, TokenBucket
 
 
 def _reset():
-    _windows.clear()
+    from app import rate_limit
+
+    rate_limit._buckets.clear()
 
 
 def test_rate_limiter_allows_then_blocks():
@@ -32,6 +34,29 @@ def test_rate_limiter_is_per_key():
     _reset()
     check_rate_limit("a", max_requests=1, window_seconds=60)
     check_rate_limit("b", max_requests=1, window_seconds=60)  # different key: fine
+
+
+def test_rate_limiter_429_has_retry_after():
+    _reset()
+    check_rate_limit("retry-key", max_requests=1, window_seconds=60)
+    with pytest.raises(HTTPException) as exc:
+        check_rate_limit("retry-key", max_requests=1, window_seconds=60)
+    assert exc.value.status_code == 429
+    retry_after = int(exc.value.headers["Retry-After"])
+    assert 1 <= retry_after <= 60
+
+
+def test_token_bucket_refills_gradually():
+    now = [1000.0]
+    bucket = TokenBucket(capacity=2, refill_rate=1.0, clock=lambda: now[0])
+    assert bucket.allow()[0] is True
+    assert bucket.allow()[0] is True
+    allowed, retry_after = bucket.allow()
+    assert allowed is False and retry_after == pytest.approx(1.0)
+    now[0] += 0.5  # half a token: still not enough
+    assert bucket.allow()[0] is False
+    now[0] += 0.5  # one full token refilled
+    assert bucket.allow()[0] is True
 
 
 def test_input_length_guard():
